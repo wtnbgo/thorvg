@@ -48,6 +48,7 @@ option(TVG_TOOL_LOTTIE2GIF "Build lottie2gif tool" OFF)
 option(TVG_LOTTIE_EXPRESSIONS "Enable Lottie Expressions support" ON)
 option(TVG_OPENMP "Enable OpenMP support" ON)
 option(TVG_OPENGL_ES "Use OpenGL ES instead of OpenGL" OFF)
+option(TVG_GL_INITPROC "Use user-provided GL function loader" OFF)
 
 # Test options
 option(TVG_BUILD_TESTS "Build unit tests" OFF)
@@ -209,6 +210,9 @@ if(TVG_ENGINE_GL)
         list(APPEND THORVG_PRIVATE_COMPILE_FLAGS -DTHORVG_GL_TARGET_GLES=1)
     else()
         list(APPEND THORVG_PRIVATE_COMPILE_FLAGS -DTHORVG_GL_TARGET_GL=1)
+    endif()
+    if(TVG_GL_INITPROC)
+        list(APPEND THORVG_PRIVATE_COMPILE_FLAGS -DTHORVG_GL_INITPROC=1)
     endif()
 endif()
 

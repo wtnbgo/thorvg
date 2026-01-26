@@ -94,6 +94,7 @@ CMake のオプションは `-D` フラグを使用して設定します。
 | `TVG_LOTTIE_EXPRESSIONS` | `ON` | Lottie Expressions (JavaScript) サポート |
 | `TVG_OPENMP` | `ON` | OpenMP による並列処理 |
 | `TVG_OPENGL_ES` | `OFF` | OpenGL の代わりに OpenGL ES を使用 |
+| `TVG_GL_INITPROC` | `OFF` | ユーザー提供の GL 関数ローダーを使用 |
 | `TVG_BUILD_TESTS` | `OFF` | ユニットテストをビルド |
 | `TVG_STATIC_MODULES` | `OFF` | 静的リンクモジュールを強制 |
 
@@ -228,6 +229,64 @@ cmake -B build \
     -DCMAKE_BUILD_TYPE=Debug \
     -DTVG_LOG=ON \
     -DTVG_BUILD_TESTS=ON
+```
+
+### OpenGL エンジン構成
+
+```bash
+# OpenGL を使用
+cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DTVG_ENGINE_GL=ON
+
+# OpenGL ES を使用
+cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DTVG_ENGINE_GL=ON \
+    -DTVG_OPENGL_ES=ON
+```
+
+### ユーザー提供の GL 関数ローダーを使用
+
+`TVG_GL_INITPROC` を有効にすると、ThorVG は自動的にシステムの OpenGL/EGL ライブラリをロードせず、
+ユーザーが提供する `getProcAddress` 関数を使用して GL 関数を取得します。
+これは GLFW、SDL、その他のウィンドウライブラリと統合する際に便利です。
+
+```bash
+cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DTVG_ENGINE_GL=ON \
+    -DTVG_GL_INITPROC=ON
+```
+
+使用例 (C++):
+
+```cpp
+#include <thorvg.h>
+
+// GLFW の場合
+#include <GLFW/glfw3.h>
+
+int main() {
+    // ThorVG 初期化前に glInitProc を呼び出す
+    tvg::glInitProc((void* (*)(const char*))glfwGetProcAddress);
+    
+    tvg::Initializer::init(0, tvg::CanvasEngine::Gl);
+    // ...
+}
+
+// SDL の場合
+#include <SDL.h>
+
+int main() {
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_GL_CreateContext(window);
+    
+    tvg::glInitProc((void* (*)(const char*))SDL_GL_GetProcAddress);
+    
+    tvg::Initializer::init(0, tvg::CanvasEngine::Gl);
+    // ...
+}
 ```
 
 ## インストール

@@ -38,7 +38,33 @@ bool glTerm()
 
 #else //__EMSCRIPTEN__
 
-#if defined(_WIN32) && !defined(__CYGWIN__)
+#if defined(THORVG_GL_INITPROC)
+
+typedef void* (*PFNGLGETPROCADDRESSPROC)(const char*);
+static PFNGLGETPROCADDRESSPROC _userGetProcAddress = nullptr;
+
+static bool _glLoad()
+{
+    if (!_userGetProcAddress) {
+        TVGERR("GL_ENGINE", "glInitProc() must be called before glInit().");
+        return false;
+    }
+    return true;
+}
+
+
+static void* _getProcAddress(const char* procName)
+{
+    return _userGetProcAddress(procName);
+}
+
+
+void glInitProc(void* (*getProcAddress)(const char*))
+{
+    _userGetProcAddress = (PFNGLGETPROCADDRESSPROC)getProcAddress;
+}
+
+#elif defined(_WIN32) && !defined(__CYGWIN__)
 
 #ifdef THORVG_GL_TARGET_GL
     typedef PROC(WINAPI *PFNGLGETPROCADDRESSPROC)(LPCSTR);
@@ -831,39 +857,61 @@ bool glInit()
     // GL_FUNCTION_FETCH(glGetActiveUniformBlockName, PFNGLGETACTIVEUNIFORMBLOCKNAMEPROC);
     GL_FUNCTION_FETCH(glUniformBlockBinding, PFNGLUNIFORMBLOCKBINDINGPROC);
 
-#if defined(_WIN32) && !defined(__CYGWIN__) && defined(THORVG_GL_TARGET_GL)
-    tvgWglGetCurrentContext = (PFNWGLGETCURRENTCONTEXTPROC)GetProcAddress(_libGL, "wglGetCurrentContext");
-    tvgWglMakeCurrent = (PFNWGLMAKECURRENTPROC)GetProcAddress(_libGL, "wglMakeCurrent");
-    if (!tvgWglGetCurrentContext || !tvgWglMakeCurrent) {
-        TVGERR("GL_ENGINE", "Failed to load WGL context management functions.");
-        return false;
-    }
-#endif
-
-#if defined(THORVG_GL_TARGET_GLES)
-    #if defined(_WIN32) && !defined(__CYGWIN__)
-        if (!_libEGL) _libEGL = LoadLibraryW(L"libEGL.dll");
-        if (!_libEGL) _libEGL = LoadLibraryW(L"EGL.dll");
-        if (!_libEGL) {
-            TVGERR("GL_ENGINE", "Cannot find EGL library.");
+#if defined(THORVG_GL_INITPROC)
+    #if defined(_WIN32) && !defined(__CYGWIN__) && defined(THORVG_GL_TARGET_GL)
+        // Load context management functions from user-provided getProcAddress
+        tvgWglGetCurrentContext = (PFNWGLGETCURRENTCONTEXTPROC)_getProcAddress("wglGetCurrentContext");
+        tvgWglMakeCurrent = (PFNWGLMAKECURRENTPROC)_getProcAddress("wglMakeCurrent");
+        if (!tvgWglGetCurrentContext || !tvgWglMakeCurrent)) {
+            TVGERR("GL_ENGINE", "Failed to load WGL context management functions.");
             return false;
         }
-        tvgEglGetCurrentContext = (PFNEGLGETCURRENTCONTEXTPROC)GetProcAddress(_libEGL, "eglGetCurrentContext");
-        tvgEglMakeCurrent = (PFNEGLMAKECURRENTPROC)GetProcAddress(_libEGL, "eglMakeCurrent");
-    #else
-        if (!_libEGL) _libEGL = dlopen("libEGL.so.1", RTLD_LAZY);
-        if (!_libEGL) _libEGL = dlopen("libEGL.so", RTLD_LAZY);
-        if (!_libEGL) {
-            TVGERR("GL_ENGINE", "Cannot find EGL library.");
-            return false;
-        }
-        tvgEglGetCurrentContext = (PFNEGLGETCURRENTCONTEXTPROC)dlsym(_libEGL, "eglGetCurrentContext");
-        tvgEglMakeCurrent = (PFNEGLMAKECURRENTPROC)dlsym(_libEGL, "eglMakeCurrent");
     #endif
-    if (!tvgEglGetCurrentContext || !tvgEglMakeCurrent) {
-        TVGERR("GL_ENGINE", "Failed to load EGL context management functions.");
-        return false;
-    }
+
+    #if defined(THORVG_GL_TARGET_GLES)
+        tvgEglGetCurrentContext = (PFNEGLGETCURRENTCONTEXTPROC)_getProcAddress("eglGetCurrentContext");
+        tvgEglMakeCurrent = (PFNEGLMAKECURRENTPROC)_getProcAddress("eglMakeCurrent");
+        // At least one pair of context management functions must be available
+        if (!tvgEglGetCurrentContext || !tvgEglMakeCurrent) {
+            TVGERR("GL_ENGINE", "Failed to load EGL context management functions.");
+            return false;
+        }
+    #endif
+#else
+    #if defined(_WIN32) && !defined(__CYGWIN__) && defined(THORVG_GL_TARGET_GL)
+        tvgWglGetCurrentContext = (PFNWGLGETCURRENTCONTEXTPROC)GetProcAddress(_libGL, "wglGetCurrentContext");
+        tvgWglMakeCurrent = (PFNWGLMAKECURRENTPROC)GetProcAddress(_libGL, "wglMakeCurrent");
+        if (!tvgWglGetCurrentContext || !tvgWglMakeCurrent) {
+            TVGERR("GL_ENGINE", "Failed to load WGL context management functions.");
+            return false;
+        }
+    #endif
+
+    #if defined(THORVG_GL_TARGET_GLES)
+        #if defined(_WIN32) && !defined(__CYGWIN__)
+            if (!_libEGL) _libEGL = LoadLibraryW(L"libEGL.dll");
+            if (!_libEGL) _libEGL = LoadLibraryW(L"EGL.dll");
+            if (!_libEGL) {
+                TVGERR("GL_ENGINE", "Cannot find EGL library.");
+                return false;
+            }
+            tvgEglGetCurrentContext = (PFNEGLGETCURRENTCONTEXTPROC)GetProcAddress(_libEGL, "eglGetCurrentContext");
+            tvgEglMakeCurrent = (PFNEGLMAKECURRENTPROC)GetProcAddress(_libEGL, "eglMakeCurrent");
+        #else
+            if (!_libEGL) _libEGL = dlopen("libEGL.so.1", RTLD_LAZY);
+            if (!_libEGL) _libEGL = dlopen("libEGL.so", RTLD_LAZY);
+            if (!_libEGL) {
+                TVGERR("GL_ENGINE", "Cannot find EGL library.");
+                return false;
+            }
+            tvgEglGetCurrentContext = (PFNEGLGETCURRENTCONTEXTPROC)dlsym(_libEGL, "eglGetCurrentContext");
+            tvgEglMakeCurrent = (PFNEGLMAKECURRENTPROC)dlsym(_libEGL, "eglMakeCurrent");
+        #endif
+        if (!tvgEglGetCurrentContext || !tvgEglMakeCurrent) {
+            TVGERR("GL_ENGINE", "Failed to load EGL context management functions.");
+            return false;
+        }
+    #endif
 #endif
 
     //Confirm the version
@@ -883,7 +931,9 @@ bool glInit()
 
 bool glTerm()
 {
-#if defined(_WIN32) && !defined(__CYGWIN__)
+#if defined(THORVG_GL_INITPROC)
+    _userGetProcAddress = nullptr;
+#elif defined(_WIN32) && !defined(__CYGWIN__)
     if (_libGL) FreeLibrary(_libGL);
     #if defined(THORVG_GL_TARGET_GLES)
         if (_libEGL) FreeLibrary(_libEGL);

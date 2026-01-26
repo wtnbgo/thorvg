@@ -20,6 +20,7 @@
                 "TVG_SIMD":"ON",
                 "TVG_ENGINE_GL":"ON",
                 "TVG_OPENGL_ES":"ON",
+                "TVG_GL_INITPROC":"ON",
                 "TVG_BINDINGS_CAPI":"ON"
             }
         },

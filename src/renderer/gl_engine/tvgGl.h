@@ -1511,6 +1511,10 @@
 
 #endif // __EMSCRIPTEN__
 
+#if defined(THORVG_GL_INITPROC) && !defined(__EMSCRIPTEN__)
+void glInitProc(void* (*getProcAddress)(const char*));
+#endif
+
 bool glInit();
 bool glTerm();
 
