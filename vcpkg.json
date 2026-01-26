@@ -1,0 +1,55 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "thorvg",
+  "version": "1.0.0",
+  "description": "Thor Vector Graphics - A lightweight vector graphics library",
+  "homepage": "https://github.com/thorvg/thorvg",
+  "license": "MIT",
+  "dependencies": [
+  ],
+  "features": {
+    "png": {
+      "description": "Enable external PNG loader support (libpng)",
+      "dependencies": [
+        "libpng"
+      ]
+    },
+    "jpg": {
+      "description": "Enable external JPEG loader support (libjpeg-turbo)",
+      "dependencies": [
+        "libjpeg-turbo"
+      ]
+    },
+    "webp": {
+      "description": "Enable external WebP loader support (libwebp)",
+      "dependencies": [
+        "libwebp"
+      ]
+    },
+    "all-loaders": {
+      "description": "Enable all external image loaders",
+      "dependencies": [
+        {
+          "name": "thorvg",
+          "default-features": false,
+          "features": ["png", "jpg", "webp"]
+        }
+      ]
+    },
+    "opengl": {
+      "description": "Enable OpenGL engine support",
+      "dependencies": [
+        {
+          "name": "opengl",
+          "platform": "!emscripten"
+        }
+      ]
+    },
+    "webgpu": {
+      "description": "Enable WebGPU engine support",
+      "dependencies": [
+        "wgpu-native"
+      ]
+    }
+  }
+}

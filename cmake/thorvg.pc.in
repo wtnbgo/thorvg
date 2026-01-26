@@ -1,0 +1,10 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@/thorvg-@THORVG_VERSION_MAJOR@
+
+Name: libthorvg
+Description: A Thor library for rendering vector graphics
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -lthorvg-@THORVG_VERSION_MAJOR@
+Cflags: -I${includedir}
