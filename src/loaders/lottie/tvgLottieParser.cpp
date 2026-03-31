@@ -139,8 +139,8 @@ bool LottieParser::getValue(TextDocument& doc)
         else if (KEY_AS("j"))
         {
             auto val = getInt();
-            if (val == 1) doc.justify = -1.0f;        //right align
-            else if (val == 2) doc.justify = -0.5f;   //center align
+            if (val == 1) doc.justify = 1.0f;        //right align
+            else if (val == 2) doc.justify = 0.5f;   //center align
         }
         else if (KEY_AS("ca")) doc.caps = getInt();
         else if (KEY_AS("tr")) doc.tracking = getFloat() * 0.1f;
@@ -464,7 +464,7 @@ void LottieParser::parsePropertyInternal(T& prop)
 }
 
 
-void LottieParser::registerSlot(LottieObject* obj, const char* sid, LottieProperty::Type type)
+void LottieParser::registerSlot(LottieObject* obj, const char* sid, LottieProperty& prop)
 {
     auto val = djb2Encode(sid);
 
@@ -472,9 +472,11 @@ void LottieParser::registerSlot(LottieObject* obj, const char* sid, LottieProper
     ARRAY_FOREACH(p, comp->slots) {
         if ((*p)->sid != val) continue;
         (*p)->pairs.push({obj});
+        prop.sid = val;
         return;
     }
-    comp->slots.push(new LottieSlot(context.layer, context.parent, val, obj, type));
+    comp->slots.push(new LottieSlot(context.layer, context.parent, val, obj, prop.type));
+    prop.sid = val;
 }
 
 
@@ -511,7 +513,7 @@ bool LottieParser::parseCommon(LottieObject* obj, LottieProperty& prop, const ch
         getExpression(getStringCopy(), comp, context.layer, context.parent, &prop);
         return true;
     } else if (KEY_AS("sid")) {
-        registerSlot(obj, getString(), prop.type);
+        registerSlot(obj, getString(), prop);
         return true;
     } else return false;
 }
@@ -602,8 +604,8 @@ LottieTransform* LottieParser::parseTransform(bool ddd)
         else if (transform->rotationEx && KEY_AS("rx")) parseProperty(transform->rotationEx->x);
         else if (transform->rotationEx && KEY_AS("ry")) parseProperty(transform->rotationEx->y);
         else if (transform->rotationEx && KEY_AS("rz")) parseProperty(transform->rotation);
-        else if (KEY_AS("sk")) parseProperty(transform->skewAngle);
-        else if (KEY_AS("sa")) parseProperty(transform->skewAxis);
+        else if (KEY_AS("sk")) parseProperty(transform->skewAngle, transform);
+        else if (KEY_AS("sa")) parseProperty(transform->skewAxis, transform);
         else skip();
     }
     return transform;
@@ -866,6 +868,19 @@ LottieOffsetPath* LottieParser::parseOffsetPath()
     return offsetPath;
 }
 
+LottiePuckerBloat* LottieParser::parsePuckerBloat()
+{
+    auto puckerBloat = new LottiePuckerBloat;
+
+    context.parent = puckerBloat;
+
+    while (auto key = nextObjectKey()) {
+        if (parseCommon(puckerBloat, key)) continue;
+        else if (KEY_AS("a")) parseProperty(puckerBloat->amount);
+        else skip();
+    }
+    return puckerBloat;
+}
 
 LottieObject* LottieParser::parseObject(const char* type)
 {
@@ -882,10 +897,10 @@ LottieObject* LottieParser::parseObject(const char* type)
     else if (!strcmp(type, "gs")) return parseGradientStroke();
     else if (!strcmp(type, "tm")) return parseTrimpath();
     else if (!strcmp(type, "rp")) return parseRepeater();
-    else if (!strcmp(type, "mm")) TVGLOG("LOTTIE", "MergePath(mm) is not supported yet");
-    else if (!strcmp(type, "pb")) TVGLOG("LOTTIE", "Puker/Bloat(pb) is not supported yet");
-    else if (!strcmp(type, "tw")) TVGLOG("LOTTIE", "Twist(tw) is not supported yet");
+    else if (!strcmp(type, "pb")) return parsePuckerBloat();
     else if (!strcmp(type, "op")) return parseOffsetPath();
+    else if (!strcmp(type, "mm")) TVGLOG("LOTTIE", "MergePath(mm) is not supported yet");
+    else if (!strcmp(type, "tw")) TVGLOG("LOTTIE", "Twist(tw) is not supported yet");
     else if (!strcmp(type, "zz")) TVGLOG("LOTTIE", "ZigZag(zz) is not supported yet");
     return nullptr;
 }
@@ -948,6 +963,11 @@ void LottieParser::parseObject(Array<LottieObject*>& parent)
 
 void LottieParser::parseImage(LottieImage* image, const char* data, const char* subPath, bool embedded, float width, float height)
 {
+    auto dlen = strlen(data);
+    if (dlen == 0) return;
+
+    auto external = false;
+
     //embedded image resource. should start with "data:"
     //header look like "data:image/png;base64," so need to skip till ','.
     if (embedded && !strncmp(data, "data:", 5)) {
@@ -957,18 +977,22 @@ void LottieParser::parseImage(LottieImage* image, const char* data, const char* 
         image->bitmap.mimeType = duplicate(mimeType, needle - mimeType);
         //b64 data
         auto b64Data = strstr(data, ",") + 1;
-        size_t length = strlen(data) - (b64Data - data);
+        size_t length = dlen - (b64Data - data);
         image->bitmap.size = b64Decode(b64Data, length, &image->bitmap.data);
+    //remote image resource (https:// or http://)
+    } else if (!strncmp(data, "https://", 8) || !strncmp(data, "http://", 7)) {
+        image->bitmap.path = duplicate(data);
     //external image resource
     } else {
-        auto len = strlen(dirName) + strlen(subPath) + strlen(data) + 2;
+        auto subPathLen = subPath ? strlen(subPath) : 0;
+        auto len = strlen(dirName) + subPathLen + dlen + 2;
         image->bitmap.path = tvg::malloc<char>(len);
-        snprintf(image->bitmap.path, len, "%s/%s%s", dirName, subPath, data);
+        snprintf(image->bitmap.path, len, "%s/%s%s", dirName, subPath ? subPath : "", data);
+        external = true;
     }
-
     image->bitmap.width = width;
     image->bitmap.height = height;
-    image->prepare();
+    image->prepare(external);
 }
 
 
@@ -1008,7 +1032,7 @@ LottieObject* LottieParser::parseAsset()
     if (data) {
         obj = new LottieImage;
         parseImage(static_cast<LottieImage*>(obj), data, subPath, embedded, width, height);
-        if (sid) registerSlot(obj, sid, LottieProperty::Type::Image);
+        if (sid) registerSlot(obj, sid, static_cast<LottieImage*>(obj)->bitmap);
     }
     if (obj) obj->id = id;
     return obj;
@@ -1182,6 +1206,7 @@ void LottieParser::parseTextRange(LottieText* text)
         enterObject();
 
         auto selector = new LottieTextRange;
+        context.parent = selector;
 
         while (auto key = nextObjectKey()) {
             if (KEY_AS("s")) { // text range selector
@@ -1208,29 +1233,29 @@ void LottieParser::parseTextRange(LottieText* text)
             } else if (KEY_AS("a")) { // text style
                 enterObject();
                 while (auto key = nextObjectKey()) {
-                    if (KEY_AS("t")) parseProperty(selector->style.letterSpace);
-                    else if (KEY_AS("ls")) parseProperty(selector->style.lineSpace);
+                    if (KEY_AS("t")) parseProperty(selector->style.letterSpace, selector);
+                    else if (KEY_AS("ls")) parseProperty(selector->style.lineSpace, selector);
                     else if (KEY_AS("fc"))
                     {
-                        parseProperty(selector->style.fillColor);
+                        parseProperty(selector->style.fillColor, selector);
                         selector->style.flags.fillColor = true;
                     }
-                    else if (KEY_AS("fo")) parseProperty(selector->style.fillOpacity);
+                    else if (KEY_AS("fo")) parseProperty(selector->style.fillOpacity, selector);
                     else if (KEY_AS("sw"))
                     {
-                        parseProperty(selector->style.strokeWidth);
+                        parseProperty(selector->style.strokeWidth, selector);
                         selector->style.flags.strokeWidth = true;
                     }
                     else if (KEY_AS("sc"))
                     {
-                        parseProperty(selector->style.strokeColor);
+                        parseProperty(selector->style.strokeColor, selector);
                         selector->style.flags.strokeColor = true;
                     }
-                    else if (KEY_AS("so")) parseProperty(selector->style.strokeOpacity);
-                    else if (KEY_AS("o")) parseProperty(selector->style.opacity);
-                    else if (KEY_AS("p")) parseProperty(selector->style.position);
-                    else if (KEY_AS("s")) parseProperty(selector->style.scale);
-                    else if (KEY_AS("r")) parseProperty(selector->style.rotation);
+                    else if (KEY_AS("so")) parseProperty(selector->style.strokeOpacity, selector);
+                    else if (KEY_AS("o")) parseProperty(selector->style.opacity, selector);
+                    else if (KEY_AS("p")) parseProperty(selector->style.position, selector);
+                    else if (KEY_AS("s")) parseProperty(selector->style.scale, selector);
+                    else if (KEY_AS("r")) parseProperty(selector->style.rotation, selector);
                     else skip();
                 }
             } else skip();
@@ -1658,6 +1683,7 @@ LottieProperty* LottieParser::parse(LottieSlot* slot)
         }
         default: break;
     }
+    prop->sid = slot->sid;
     return prop;
 }
 

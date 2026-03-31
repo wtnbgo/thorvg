@@ -24,21 +24,9 @@
 #include "tvgMath.h"
 
 
-WgStroker::WgStroker(WgMeshData* buffer, float width, StrokeCap cap, StrokeJoin join) 
-    : mBuffer(buffer), mWidth(width), mCap(cap), mJoin(join)
+WgStroker::WgStroker(WgMeshData* buffer, float width, StrokeCap cap, StrokeJoin join, float miterLimit)
+    : mBuffer(buffer), mWidth(width), mMiterLimit(miterLimit), mCap(cap), mJoin(join)
 {
-}
-
-
-void WgStroker::run(const RenderShape& rshape, const RenderPath& path, const Matrix& m)
-{
-    mMiterLimit = rshape.strokeMiterlimit();
-    mCap = rshape.strokeCap();
-    mJoin = rshape.strokeJoin();
-
-    RenderPath dashed;
-    if (rshape.strokeDash(dashed)) run(dashed, m);
-    else run(path, m);
 }
 
 
@@ -53,11 +41,10 @@ BBox WgStroker::getBBox() const
     return {mLeftTop, mRightBottom};
 }
 
-void WgStroker::run(const RenderPath& path, const Matrix& m)
+void WgStroker::run(const RenderPath& path)
 {
     mBuffer->vbuffer.reserve(path.pts.count * 4 + 16);
     mBuffer->ibuffer.reserve(path.pts.count * 3);
-    mScale = tvg::scaling(m);
 
     auto validStrokeCap = false;
     auto pts = path.pts.data;
@@ -83,7 +70,7 @@ void WgStroker::run(const RenderPath& path, const Matrix& m)
             } break;
             case PathCommand::CubicTo: {
                 validStrokeCap = true;
-                cubicTo(pts[0], pts[1], pts[2], m);
+                cubicTo(pts[0], pts[1], pts[2]);
                 pts += 3;
             } break;
             case PathCommand::Close: {
@@ -174,17 +161,10 @@ void WgStroker::lineTo(const Point& curr)
 }
 
 
-void WgStroker::cubicTo(const Point& cnt1, const Point& cnt2, const Point& end, const Matrix& m)
+void WgStroker::cubicTo(const Point& cnt1, const Point& cnt2, const Point& end)
 {
     Bezier curve {mState.prevPt, cnt1, cnt2, end};
-
-    Bezier relCurve {curve.start, curve.ctrl1, curve.ctrl2, curve.end};
-    relCurve.start *= m;
-    relCurve.ctrl1 *= m;
-    relCurve.ctrl2 *= m;
-    relCurve.end *= m;
-
-    auto count = relCurve.segments();
+    auto count = curve.segments();
     auto step = 1.f / count;
 
     for (uint32_t i = 0; i <= count; i++) {
@@ -260,7 +240,7 @@ void WgStroker::round(const Point &prev, const Point& curr, const Point& center)
     }
 
     auto arcAngle = endAngle - startAngle;
-    auto count = tvg::arcSegmentsCnt(arcAngle, radius() * mScale);
+    auto count = tvg::arcSegmentsCnt(arcAngle, radius());
 
     auto c = mBuffer->vbuffer.count;  mBuffer->vbuffer.push(center);
     auto pi = mBuffer->vbuffer.count; mBuffer->vbuffer.push(prev);
@@ -287,7 +267,7 @@ void WgStroker::round(const Point &prev, const Point& curr, const Point& center)
 
 void WgStroker::roundPoint(const Point &p)
 {
-    auto count = tvg::arcSegmentsCnt(2.0f * MATH_PI, radius() * mScale);
+    auto count = tvg::arcSegmentsCnt(2.0f * MATH_PI, radius());
     auto c = mBuffer->vbuffer.count; mBuffer->vbuffer.push(p);
     auto step = 2.0f * MATH_PI / (count - 1);
 
@@ -428,13 +408,12 @@ void WgStroker::round(const Point& p, const Point& outDir)
     round(c, b, p);
 }
 
-
 WgBWTessellator::WgBWTessellator(WgMeshData* buffer): mBuffer(buffer)
 {
 }
 
 
-void WgBWTessellator::tessellate(const RenderPath& path, const Matrix& matrix)
+void WgBWTessellator::tessellate(const RenderPath& path)
 {
     if (path.pts.count <= 2) return;
 
@@ -445,37 +424,39 @@ void WgBWTessellator::tessellate(const RenderPath& path, const Matrix& matrix)
 
     uint32_t firstIndex = 0;
     uint32_t prevIndex = 0;
+    Point firstPt = {};
+    Point prevPt = {};
+    tvg::ConvexProbe probe;
+    bool contourClosed = false;
 
     mBuffer->vbuffer.reserve(ptsCnt * 2);
     mBuffer->ibuffer.reserve((ptsCnt - 2) * 3);
 
-    auto updateConvexity = [&](const Point& edge) {
-        if (!convex) return;
-        if (prevEdge.x == 0.0f && prevEdge.y == 0.0f) { prevEdge = edge; return; }
-        auto c = cross(prevEdge, edge);
-        if (zero(c)) { prevEdge = edge; return; }
-        auto sign = (c > 0) ? 1 : -1;
-        if (winding == 0) winding = sign; // The default winding is CCW, but it might be otherwise once we support unordered points.Expand commentComment on line R453ResolvedCode has comments. Press enter to view.
-        else if (sign != winding) convex = false;
-        prevEdge = edge;
+    auto finishContour = [&]() {
+        if (prevIndex == 0 || contourClosed) return;
+        probe.addContourClose(firstPt - prevPt);
+        contourClosed = true;
     };
 
     for (uint32_t i = 0; i < cmdCnt; i++) {
         switch(cmds[i]) {
             case PathCommand::MoveTo: {
+                finishContour();
+                probe.nextContour();
                 firstIndex = pushVertex(pts->x, pts->y);
                 firstPt = prevPt = *pts;
-                prevEdge = {};
                 prevIndex = 0;
+                contourClosed = false;
                 pts++;
             } break;
             case PathCommand::LineTo: {
+                auto edge = *pts - prevPt;
                 if (prevIndex == 0) {
                     prevIndex = pushVertex(pts->x, pts->y);
-                    prevEdge = *pts - prevPt;
+                    probe.addEdge(edge);
                     prevPt = *pts++;
                 } else {
-                    updateConvexity(*pts - prevPt);
+                    probe.addEdge(edge);
                     auto currIndex = pushVertex(pts->x, pts->y);
                     pushTriangle(firstIndex, prevIndex, currIndex);
                     prevIndex = currIndex;
@@ -484,23 +465,18 @@ void WgBWTessellator::tessellate(const RenderPath& path, const Matrix& matrix)
             } break;
             case PathCommand::CubicTo: {
                 Bezier curve{pts[-1], pts[0], pts[1], pts[2]};
-                if (convex) {
-                    auto e1 = curve.ctrl1 - curve.start;
-                    auto e2 = curve.ctrl2 - curve.ctrl1;
-                    auto e3 = curve.end - curve.ctrl2;
-                    if (prevIndex != 0) updateConvexity(e1);
-                    else prevEdge = e1;
-                    updateConvexity(e2);
-                    updateConvexity(e3);
-                }
+                if (probe.convex && tvg::edgesCross(curve.start, curve.ctrl1, curve.ctrl2, curve.end)) probe.convex = false;
 
-                auto stepCount = (curve * matrix).segments();
+                auto stepCount = curve.segments();
                 if (stepCount <= 1) stepCount = 2;
                 float step = 1.f / stepCount;
+                auto curvePrevPt = prevPt;
 
                 for (uint32_t s = 1; s <= static_cast<uint32_t>(stepCount); s++) {
                     auto pt = curve.at(step * s);
+                    probe.addEdge(pt - curvePrevPt);
                     auto currIndex = pushVertex(pt.x, pt.y);
+                    curvePrevPt = pt;
                     if (prevIndex == 0) { prevIndex = currIndex; continue; }
                     pushTriangle(firstIndex, prevIndex, currIndex);
                     prevIndex = currIndex;
@@ -508,19 +484,16 @@ void WgBWTessellator::tessellate(const RenderPath& path, const Matrix& matrix)
                 prevPt = curve.end;
                 pts += 3;
             } break;
-                case PathCommand::Close: {
-                if (convex && prevIndex != 0) {
-                    updateConvexity(firstPt - prevPt);
-                    if (convex && winding != 0) {
-                        auto secondPt = mBuffer->vbuffer[firstIndex+1];
-                        updateConvexity(secondPt - firstPt);
-                    }
-                }
+            case PathCommand::Close: {
+                finishContour();
             } break;
             default:
                 break;
         }
     }
+
+    finishContour();
+    convex = probe.convex;
 }
 
 

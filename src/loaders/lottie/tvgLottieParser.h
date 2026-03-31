@@ -93,6 +93,7 @@ private:
     LottieTrimpath* parseTrimpath();
     LottieRepeater* parseRepeater();
     LottieOffsetPath* parseOffsetPath();
+    LottiePuckerBloat* parsePuckerBloat();
     LottieFont* parseFont();
     void parseFontData(LottieFont* font, const char* data);
     LottieMarker* parseMarker();
@@ -130,7 +131,7 @@ private:
 
     char* captureType();
     void captureSlots(const char* key);
-    void registerSlot(LottieObject* obj, const char* sid, LottieProperty::Type type);
+    void registerSlot(LottieObject* obj, const char* sid, LottieProperty& prop);
 
     //Current parsing context
     struct Context {

@@ -675,7 +675,7 @@
         typedef void (*PFNGLUNIFORM2IVPROC)(GLint location, GLsizei count, const GLint *value);
         typedef void (*PFNGLUNIFORM3IVPROC)(GLint location, GLsizei count, const GLint *value);
         typedef void (*PFNGLUNIFORM4IVPROC)(GLint location, GLsizei count, const GLint *value);
-        typedef void (*PFNGLUNIFORMMATRIX4FVPROC)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
+        // typedef void (*PFNGLUNIFORMMATRIX4FVPROC)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
         typedef void (*PFNGLVERTEXATTRIBPOINTERPROC)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
         //typedef void (*PFNGLBLENDEQUATIONSEPARATEPROC)(GLenum modeRGB, GLenum modeAlpha);
         //typedef void (*PFNGLSTENCILMASKSEPARATEPROC)(GLenum face, GLuint mask);
@@ -701,7 +701,7 @@
         //typedef void (*PFNGLUNIFORM3IPROC)(GLint location, GLint v0, GLint v1, GLint v2);
         //typedef void (*PFNGLUNIFORM4IPROC)(GLint location, GLint v0, GLint v1, GLint v2, GLint v3);
         //typedef void (*PFNGLUNIFORMMATRIX2FVPROC)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
-        //typedef void (*PFNGLUNIFORMMATRIX3FVPROC)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
+        typedef void (*PFNGLUNIFORMMATRIX3FVPROC)(GLint location, GLsizei count, GLboolean transpose, const GLfloat *value);
         //typedef void (*PFNGLVALIDATEPROGRAMPROC)(GLuint program);
         //typedef void (*PFNGLVERTEXATTRIB1DPROC)(GLuint index, GLdouble x);
         //typedef void (*PFNGLVERTEXATTRIB1DVPROC)(GLuint index, const GLdouble *v);
@@ -731,7 +731,7 @@
         //typedef void (*PFNGLVERTEXATTRIB4BVPROC)(GLuint index, const GLbyte *v);
         //typedef void (*PFNGLVERTEXATTRIB4DPROC)(GLuint index, GLdouble x, GLdouble y, GLdouble z, GLdouble w);
         //typedef void (*PFNGLVERTEXATTRIB4DVPROC)(GLuint index, const GLdouble *v);
-        //typedef void (*PFNGLVERTEXATTRIB4FPROC)(GLuint index, GLfloat x, GLfloat y, GLfloat z, GLfloat w);
+        typedef void (*PFNGLVERTEXATTRIB4FPROC)(GLuint index, GLfloat x, GLfloat y, GLfloat z, GLfloat w);
         //typedef void (*PFNGLVERTEXATTRIB4FVPROC)(GLuint index, const GLfloat *v);
         //typedef void (*PFNGLVERTEXATTRIB4IVPROC)(GLuint index, const GLint *v);
         //typedef void (*PFNGLVERTEXATTRIB4SPROC)(GLuint index, GLshort x, GLshort y, GLshort z, GLshort w);
@@ -1324,7 +1324,7 @@
     extern PFNGLUNIFORM2IVPROC               glUniform2iv;
     extern PFNGLUNIFORM3IVPROC               glUniform3iv;
     extern PFNGLUNIFORM4IVPROC               glUniform4iv;
-    extern PFNGLUNIFORMMATRIX4FVPROC         glUniformMatrix4fv;
+    // extern PFNGLUNIFORMMATRIX4FVPROC         glUniformMatrix4fv;
     extern PFNGLVERTEXATTRIBPOINTERPROC      glVertexAttribPointer;
     //extern PFNGLBLENDEQUATIONSEPARATEPROC    glBlendEquationSeparate;
     //extern PFNGLDRAWBUFFERSPROC              glDrawBuffers;
@@ -1351,7 +1351,7 @@
     //extern PFNGLUNIFORM3IPROC                glUniform3i;
     //extern PFNGLUNIFORM4IPROC                glUniform4i;
     //extern PFNGLUNIFORMMATRIX2FVPROC         glUniformMatrix2fv;
-    //extern PFNGLUNIFORMMATRIX3FVPROC         glUniformMatrix3fv;
+    extern PFNGLUNIFORMMATRIX3FVPROC          glUniformMatrix3fv;
     //extern PFNGLVALIDATEPROGRAMPROC          glValidateProgram;
     //extern PFNGLVERTEXATTRIB1DPROC           glVertexAttrib1d;
     //extern PFNGLVERTEXATTRIB1DVPROC          glVertexAttrib1dv;
@@ -1381,7 +1381,7 @@
     //extern PFNGLVERTEXATTRIB4BVPROC          glVertexAttrib4bv;
     //extern PFNGLVERTEXATTRIB4DPROC           glVertexAttrib4d;
     //extern PFNGLVERTEXATTRIB4DVPROC          glVertexAttrib4dv;
-    //extern PFNGLVERTEXATTRIB4FPROC           glVertexAttrib4f;
+    extern PFNGLVERTEXATTRIB4FPROC             glVertexAttrib4f;
     //extern PFNGLVERTEXATTRIB4FVPROC          glVertexAttrib4fv;
     //extern PFNGLVERTEXATTRIB4IVPROC          glVertexAttrib4iv;
     //extern PFNGLVERTEXATTRIB4SPROC           glVertexAttrib4s;

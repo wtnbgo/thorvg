@@ -220,8 +220,8 @@ bool LottieLoader::open(const char* data, uint32_t size, const char* rpath, bool
     this->size = size;
     this->copy = copy;
 
-    if (!rpath) this->dirName = duplicate(".");
-    else this->dirName = duplicate(rpath);
+    if (rpath) this->dirName = duplicate(rpath);
+    else this->dirName = duplicate(".");
 
     return header();
 }
@@ -427,7 +427,10 @@ void LottieLoader::sync()
 {
     done();
 
-    if (build) run(0);
+    if (build) {
+        if (comp) comp->clear();
+        run(0);
+    }
 }
 
 
@@ -436,14 +439,14 @@ uint32_t LottieLoader::markersCnt()
     return ready() ? comp->markers.count : 0;
 }
 
-
-const char* LottieLoader::markers(uint32_t index)
+const char* LottieLoader::markers(uint32_t index, float* begin, float* end)
 {
     if (!ready() || index >= comp->markers.count) return nullptr;
-    auto marker = comp->markers.begin() + index;
-    return (*marker)->name;
+    auto marker = comp->markers[index];
+    if (begin) *begin = marker->time;
+    if (end) *end = marker->time + marker->duration;
+    return marker->name;
 }
-
 
 Result LottieLoader::segment(float begin, float end)
 {

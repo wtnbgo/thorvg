@@ -184,6 +184,7 @@ struct LottieProperty
     LottieExpression* exp = nullptr;
     Type type;
     uint8_t ix;  //property index
+    unsigned long sid; //property sid for slot
 
     LottieProperty(Type type = Type::Invalid) : type(type) {}
     virtual ~LottieProperty() {}
@@ -197,6 +198,7 @@ struct LottieProperty
     {
         type = rhs->type;
         ix = rhs->ix;
+        sid = rhs->sid;
 
         if (!rhs->exp) return false;
         if (shallow) {
@@ -552,7 +554,10 @@ struct LottiePathSet : LottieProperty
         float t;
 
         if (dispatch(frameNo, path, frame, t)) {
-            if (modifier) return modifier->modifyPath(path->cmds, path->cmdsCnt, path->pts, path->ptsCnt, transform, out);
+            if (modifier) {
+                modifier->path(path->cmds, path->cmdsCnt, path->pts, path->ptsCnt, transform, out);
+                return true;
+            }
             _copy(path, out.cmds);
             _copy(path, out.pts, transform);
             return true;
@@ -569,7 +574,7 @@ struct LottiePathSet : LottieProperty
             if (transform) *p *= *transform;
         }
 
-        if (modifier) modifier->modifyPath(frame->value.cmds, frame->value.cmdsCnt, interpPts, frame->value.ptsCnt, nullptr, out);
+        if (modifier) modifier->path(frame->value.cmds, frame->value.cmdsCnt, interpPts, frame->value.ptsCnt, nullptr, out);
 
         tvg::free(interpPts);
 
@@ -619,7 +624,8 @@ struct LottiePathSet : LottieProperty
 
         //Apply modifiers
         to.clear();
-        return modifier->modifyPath(to.cmds.data, to.cmds.count, to.pts.data, to.pts.count, transform, out);
+        modifier->path(to.cmds.data, to.cmds.count, to.pts.data, to.pts.count, transform, out);
+        return true;
     }
 
     bool operator()(float frameNo, RenderPath& out, Matrix* transform, LottieExpressions* exps, LottieModifier* modifier = nullptr)
