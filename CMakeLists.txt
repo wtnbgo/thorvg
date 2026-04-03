@@ -606,7 +606,7 @@ endif()
 # JPG Loader (internal)
 if(TVG_LOADER_JPG)
     if(NOT TVG_STATIC_MODULES)
-        find_package(JPEG QUIET)
+        find_package(libjpeg-turbo CONFIG)
     endif()
     
     if(JPEG_FOUND AND NOT TVG_STATIC_MODULES)
@@ -761,7 +761,7 @@ endif()
 
 # External JPEG
 if(JPEG_FOUND AND NOT TVG_STATIC_MODULES AND TVG_LOADER_JPG)
-    list(APPEND THORVG_LINK_LIBS JPEG::JPEG)
+    list(APPEND THORVG_LINK_LIBS libjpeg-turbo::turbojpeg)
 endif()
 
 # External WebP
