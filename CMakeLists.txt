@@ -277,6 +277,7 @@ if(TVG_ENGINE_GL)
         src/renderer/gl_engine/tvgGlRenderPass.cpp
         src/renderer/gl_engine/tvgGlRenderTarget.cpp
         src/renderer/gl_engine/tvgGlRenderTask.cpp
+        src/renderer/gl_engine/tvgGlSolidBatch.cpp
         src/renderer/gl_engine/tvgGlShader.cpp
         src/renderer/gl_engine/tvgGlShaderSrc.cpp
         src/renderer/gl_engine/tvgGlTessellator.cpp
