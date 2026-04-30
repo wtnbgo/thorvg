@@ -501,10 +501,11 @@ void FtLoader::metrics(const FontMetrics& fm, TextMetrics& out)
     auto scale = (fm.fontSize * FontLoader::DPI) / static_cast<float>(ftFace.unitsPerEm());
     out.advance = static_cast<float>(ftFace.lineHeight()) * scale;
     out.ascent = static_cast<float>(ftFace.ascent()) * scale;
-    out.descent = static_cast<float>(ftFace.descent()) * scale;
-    //FreeType doesn't surface linegap directly via the public face fields;
-    //hhea.lineGap is roughly height - (ascender - descender). Approximate it.
-    out.linegap = out.advance - (out.ascent + out.descent);
+    out.descent = static_cast<float>(ftFace.descent()) * scale;   //FT 規約で負値
+    //FreeType doesn't surface linegap directly via the public face fields.
+    //hhea: face->height = ascender - descender + lineGap (descender < 0).
+    //So lineGap = height - (ascender - descender) = advance - ascent + descent.
+    out.linegap = out.advance - out.ascent + out.descent;
     if (out.linegap < 0.0f) out.linegap = 0.0f;
 }
 
@@ -514,11 +515,26 @@ bool FtLoader::metrics(const FontMetrics& fm, const char* ch, GlyphMetrics& out)
     if (!ch || !ftFace.face || fm.fontSize <= 0.0f) return false;
     auto p = ch;
     auto code = decodeUtf8(&p, ch + strlen(ch));
-    auto gid = ftFace.glyphIndex(code);
+
+    //Apply the same primary→fallback resolve order as the full-text shaping
+    //path (see resolve() in generate()). Without this, callers that compute
+    //a string's total width by summing per-glyph advances (e.g. Elements
+    //text_backend_tvg::measure_text) underestimate widths whenever the
+    //primary font lacks the glyph (CJK / emoji), causing layout overflow.
+    auto* face = &ftFace;
+    auto gid = face->glyphIndex(code);
+    if (gid == 0) {
+        if (auto* fb = FtFontManager::instance().fallback(code, &ftFace)) {
+            face = fb;
+            gid = face->glyphIndex(code);
+        }
+    }
     if (gid == 0) return false;
 
-    auto scale = (fm.fontSize * FontLoader::DPI) / static_cast<float>(ftFace.unitsPerEm());
-    out.advance = static_cast<float>(ftFace.advance(gid)) * scale;
+    auto upem = face->unitsPerEm();
+    if (upem == 0) return false;
+    auto scale = (fm.fontSize * FontLoader::DPI) / static_cast<float>(upem);
+    out.advance = static_cast<float>(face->advance(gid)) * scale;
     //bearing/min/max require the glyph bbox; produce a coarse approximation
     //from the glyph outline. Phase 2 keeps it simple.
     out.bearing = 0.0f;
