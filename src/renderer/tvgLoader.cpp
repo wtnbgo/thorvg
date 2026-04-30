@@ -46,6 +46,10 @@
     #include "tvgTtfLoader.h"
 #endif
 
+#ifdef THORVG_FT_LOADER_SUPPORT
+    #include "tvgFtLoader.h"
+#endif
+
 #ifdef THORVG_LOTTIE_LOADER_SUPPORT
     #include "tvgLottieLoader.h"
 #endif
@@ -99,6 +103,8 @@ static tvg::LoadModule* _find(FileType type)
         case FileType::Ttf: {
 #ifdef THORVG_TTF_LOADER_SUPPORT
             return new TtfLoader;
+#elif defined(THORVG_FT_LOADER_SUPPORT)
+            return new FtLoader;
 #endif
             break;
         }
@@ -405,12 +411,16 @@ tvg::LoadModule* LoaderMgr::loader(const uint32_t *data, uint32_t w, uint32_t h,
 //loads fonts from memory - loader is cached (regardless of copy value) in order to access it while setting font
 tvg::LoadModule* LoaderMgr::loader(const char* name, const char* data, uint32_t size, TVG_UNUSED const char* mimeType, bool copy)
 {
-#ifdef THORVG_TTF_LOADER_SUPPORT
+#if defined(THORVG_TTF_LOADER_SUPPORT) || defined(THORVG_FT_LOADER_SUPPORT)
     //TODO: add check for mimetype ?
     if (auto loader = font(name)) return loader;
 
-    //function is dedicated for ttf loader (the only supported font loader)
+    //function is dedicated for the active font loader (TTF or FT, mutually exclusive)
+#ifdef THORVG_TTF_LOADER_SUPPORT
     auto loader = new TtfLoader;
+#else
+    auto loader = new FtLoader;
+#endif
     if (loader->open(data, size, "", copy)) {
         loader->name = duplicate(name);
         loader->cached = true;  //force it.

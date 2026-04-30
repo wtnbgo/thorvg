@@ -148,6 +148,7 @@ struct FontMetrics
     TextWrap wrap = TextWrap::None;
 
     void *engine = nullptr;  //engine extension
+    const char* locale = nullptr;  //BCP47 tag, owned by the Text instance (FT loader only)
 
     ~FontMetrics()
     {

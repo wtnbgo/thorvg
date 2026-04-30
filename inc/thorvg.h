@@ -2033,6 +2033,25 @@ struct TVG_API Text : Paint
     Result wrap(TextWrap mode) noexcept;
 
     /**
+     * @brief Sets a BCP47 locale tag used by font shaping.
+     *
+     * Affects language-sensitive shaping decisions such as locale-specific
+     * OpenType lookups (e.g. CJK character variants between Japanese,
+     * Simplified Chinese, Traditional Chinese, and Korean). Has no effect
+     * with the built-in TTF loader; only honored when ThorVG is built with
+     * the FreeType + HarfBuzz text loader.
+     *
+     * @param[in] tag A BCP47 language tag such as "ja", "ja-JP", or "en-US".
+     *                Pass @c nullptr to clear the locale.
+     *
+     * @retval Result::NonSupport when the active build does not include a
+     *         locale-aware font loader.
+     *
+     * @note Experimental API. ThorVG fork extension; not part of upstream.
+     */
+    Result locale(const char* tag) noexcept;
+
+    /**
      * @brief Returns the number of text lines.
      *
      * This function retrieves the number of lines generated after applying text layout and wrapping.

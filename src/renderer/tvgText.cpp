@@ -143,6 +143,12 @@ Result Text::spacing(float letter, float line) noexcept
 }
 
 
+Result Text::locale(const char* tag) noexcept
+{
+    return to<TextImpl>(this)->locale(tag);
+}
+
+
 Result Text::wrap(TextWrap mode) noexcept
 {
     to<TextImpl>(this)->wrapping(mode);

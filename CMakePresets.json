@@ -7,21 +7,13 @@
             "generator": "Ninja Multi-Config",
             "binaryDir": "$env{BUILD_DIR}",
             "environment": {
-                "BUILD_DIR": "build/${presetName}"
+                "BUILD_DIR": "build/${presetName}",
+                "VSLANG":"1033"
             },
             "cacheVariables": {
                 "CMAKE_CXX_STANDARD":"17",
                 "CMAKE_CXX_STANDARD_REQUIRED":"ON",
-                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-                "VCPKG_MANIFEST_FEATULRES":"png,jpg",
-                "TVG_BUILD_SHARED":"OFF",
-                "TVG_LOADER_PNG":"ON",
-                "TVG_LOADER_JPG":"ON",
-                "TVG_SIMD":"ON",
-                "TVG_ENGINE_GL":"ON",
-                "TVG_OPENGL_ES":"ON",
-                "TVG_GL_INITPROC":"ON",
-                "TVG_BINDINGS_CAPI":"ON"
+                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
             }
         },
         {
@@ -34,10 +26,12 @@
             },
             "cacheVariables": {
                 "CMAKE_C_COMPILER":"cl",
+                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/toolchains/windows.cmake",
                 "VCPKG_TARGET_TRIPLET":"x86-windows-static",
                 "VCPKG_TARGET_ARCHITECTURE":"x86",
                 "VCPKG_CRT_LINKAGE":"static",
-                "VCPKG_LIBRARY_LINKAGE":"static"
+                "VCPKG_LIBRARY_LINKAGE":"static",
+                "BUILD_WINVER":"ON"
             }
         },
         {
@@ -50,11 +44,20 @@
             },
             "cacheVariables": {
                 "CMAKE_C_COMPILER":"cl",
-                "CMAKE_MSVC_RUNTIME_LIBRARY":"MultiThreaded$<$<CONFIG:Debug>:Debug>",
+                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/toolchains/windows.cmake",
                 "VCPKG_TARGET_TRIPLET":"x64-windows-static",
                 "VCPKG_TARGET_ARCHITECTURE":"x64",
                 "VCPKG_CRT_LINKAGE":"static",
-                "VCPKG_LIBRARY_LINKAGE":"static"
+                "VCPKG_LIBRARY_LINKAGE":"static",
+                "BUILD_WINVER":"ON"
+            }
+        },
+        {
+            "name": "x64-windows-sdl",
+            "description": "windows x64 build with sdl",
+            "inherits": "x64-windows",
+            "cacheVariables": {
+                "BUILD_WINVER":"OFF"
             }
         },
         {
@@ -67,6 +70,7 @@
                 "strategy": "external"
             },
             "cacheVariables": {
+                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/toolchains/linux.cmake",
                 "VCPKG_TARGET_TRIPLET":"x64-linux",
                 "VCPKG_TARGET_ARCHITECTURE":"x64",
                 "VCPKG_CRT_LINKAGE":"dynamic",
@@ -78,8 +82,10 @@
             "displayName": "for osx",
             "inherits": "default",
             "cacheVariables": {
+                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/toolchains/osx.cmake",
                 "VCPKG_CRT_LINKAGE":"dynamic",
-                "VCPKG_LIBRARY_LINKAGE":"static"
+                "VCPKG_LIBRARY_LINKAGE":"static",
+                "USE_OPENGL":"OFF"
             }
         },
         {
@@ -130,66 +136,6 @@
             "cacheVariables": {
                 "ANDROID_ABI":"x86_64"
             }
-        },
-        {
-            "name": "arm64-nx",
-            "displayName": "for nx arm64",
-            "description": "nx arm64 build",
-            "inherits": "default",
-            "architecture": {
-                "value": "arm64",
-                "strategy": "external"
-            },
-            "cacheVariables": {
-                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/toolchains/nx.cmake",
-                "VCPKG_TARGET_TRIPLET":"arm64-nx",
-                "VCPKG_TARGET_ARCHITECTURE":"arm64",
-                "VCPKG_CRT_LINKAGE":"dynamic",
-                "VCPKG_LIBRARY_LINKAGE":"static",
-                "VCPKG_CMAKE_SYSTEM_NAME":"NX",
-                "VCPKG_ENV_PASSTHROUGH":"NINTENDO_SDK_ROOT",
-                "TVG_OPENMP":"OFF"
-            }
-        },
-        {
-            "name": "arm64-ounce",
-            "displayName": "for ounce arm64",
-            "description": "ounce arm64 build",
-            "inherits": "default",
-            "architecture": {
-                "value": "arm64",
-                "strategy": "external"
-            },
-            "cacheVariables": {
-                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/toolchains/nx.cmake",
-                "VCPKG_TARGET_TRIPLET":"arm64-ounce",
-                "VCPKG_TARGET_ARCHITECTURE":"arm64",
-                "VCPKG_CRT_LINKAGE":"dynamic",
-                "VCPKG_LIBRARY_LINKAGE":"static",
-                "VCPKG_CMAKE_SYSTEM_NAME":"OUNCE",
-                "VCPKG_ENV_PASSTHROUGH":"NINTENDO_SDK_ROOT",
-                "TVG_OPENMP":"OFF"
-            }
-        },
-        {
-            "name": "x64-prospero",
-            "displayName": "for PS5",
-            "description": "PS5 build",
-            "inherits": "default",
-            "architecture": {
-                "value": "x64",
-                "strategy": "external"
-            },
-            "cacheVariables": {
-                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/toolchains/prospero.cmake",
-                "VCPKG_TARGET_TRIPLET":"x64-prospero",
-                "VCPKG_TARGET_ARCHITECTURE":"x64",
-                "VCPKG_CRT_LINKAGE":"dynamic",
-                "VCPKG_LIBRARY_LINKAGE":"static",
-                "VCPKG_CMAKE_SYSTEM_NAME":"PROSPERO",
-                "VCPKG_ENV_PASSTHROUGH":"SCE_PROSPERO_SDK_DIR",
-                "TVG_ENGINE_GL" : "OFF"
-            }
         }
     ],
 
@@ -201,6 +147,10 @@
         {
             "name": "x64-windows",
             "configurePreset": "x64-windows"
+        },
+        {
+            "name": "x64-windows-sdl",
+            "configurePreset": "x64-windows-sdl"
         },
         {
             "name": "x64-linux",
@@ -221,18 +171,6 @@
         {
             "name": "x64-android",
             "configurePreset": "x64-android"
-        },
-        {
-            "name": "arm64-nx",
-            "configurePreset": "arm64-nx"
-        },
-        {
-            "name": "arm64-ounce",
-            "configurePreset": "arm64-ounce"
-        },
-        {
-            "name": "x64-prospero",
-            "configurePreset": "x64-prospero"
         }
     ]
 }

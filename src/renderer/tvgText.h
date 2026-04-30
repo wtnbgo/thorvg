@@ -40,6 +40,7 @@ struct TextImpl : Text
     FontMetrics fm;
     char* utf8 = nullptr;
     uint32_t utf8len = 0;
+    char* localeTag = nullptr;   //BCP47 tag, owned; copied into fm.locale
     float outlineWidth = 0.0f;
     float italicShear = 0.0f;
     bool updated = false;
@@ -53,11 +54,27 @@ struct TextImpl : Text
     ~TextImpl()
     {
         tvg::free(utf8);
+        tvg::free(localeTag);
         if (loader) {
             loader->release(fm);
             LoaderMgr::retrieve(loader);
         }
         Paint::rel(shape);
+    }
+
+    Result locale(const char* tag)
+    {
+        tvg::free(localeTag);
+        localeTag = tag ? tvg::duplicate(tag) : nullptr;
+        fm.locale = localeTag;
+        updated = true;
+        impl.mark(RenderUpdateFlag::Path);
+#ifdef THORVG_FT_LOADER_SUPPORT
+        return Result::Success;
+#else
+        //TTF loader ignores the tag; report it honestly.
+        return Result::NonSupport;
+#endif
     }
 
     Result text(const char* utf8)
@@ -233,6 +250,8 @@ struct TextImpl : Text
 
         dup->utf8 = tvg::duplicate(utf8);
         dup->utf8len = utf8len;
+        dup->localeTag = localeTag ? tvg::duplicate(localeTag) : nullptr;
+        dup->fm.locale = dup->localeTag;
         dup->italicShear = italicShear;
         dup->outlineWidth = outlineWidth;
         dup->updated = true;

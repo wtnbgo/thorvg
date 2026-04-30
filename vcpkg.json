@@ -50,6 +50,13 @@
       "dependencies": [
         "wgpu-native"
       ]
+    },
+    "freetype": {
+      "description": "Enable FreeType + HarfBuzz multilingual text loader",
+      "dependencies": [
+        "freetype",
+        "harfbuzz"
+      ]
     }
   }
 }

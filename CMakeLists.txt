@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.14)
 
+# CMAKE_MSVC_RUNTIME_LIBRARY (set via presets) requires CMP0091 NEW (CMake 3.15+).
+# Without this, /MD is used regardless of the preset value, causing CRT mismatches
+# when linking against vcpkg static-runtime libraries (e.g. harfbuzz built /MT).
+if(POLICY CMP0091)
+    cmake_policy(SET CMP0091 NEW)
+endif()
+
 # UTF-8 source
 add_compile_options("$<$<AND:$<C_COMPILER_ID:MSVC>,$<COMPILE_LANGUAGE:C,CXX>>:/utf-8>")
 add_compile_options("$<$<AND:$<CXX_COMPILER_ID:MSVC>,$<COMPILE_LANGUAGE:CXX>>:/Zc:__cplusplus>")
@@ -31,8 +38,14 @@ option(TVG_LOADER_SVG "Enable SVG Loader" ON)
 option(TVG_LOADER_PNG "Enable PNG Loader" OFF)
 option(TVG_LOADER_JPG "Enable JPG Loader" OFF)
 option(TVG_LOADER_LOTTIE "Enable Lottie Loader" ON)
-option(TVG_LOADER_TTF "Enable TTF Loader" ON)
+option(TVG_LOADER_TTF "Enable TTF Loader (built-in minimal TrueType reader)" ON)
+option(TVG_LOADER_FT "Enable FreeType+HarfBuzz multilingual text loader (mutually exclusive with TVG_LOADER_TTF)" OFF)
 option(TVG_LOADER_WEBP "Enable WebP Loader" OFF)
+
+# TTF and FT loaders are mutually exclusive: both register to FileType::Ttf
+if(TVG_LOADER_TTF AND TVG_LOADER_FT)
+    message(FATAL_ERROR "TVG_LOADER_TTF and TVG_LOADER_FT are mutually exclusive. Disable one of them.")
+endif()
 
 # Saver options
 option(TVG_SAVER_GIF "Enable GIF Saver" OFF)
@@ -107,6 +120,10 @@ endif()
 
 if(TVG_LOADER_TTF)
     set(THORVG_TTF_LOADER_SUPPORT 1)
+endif()
+
+if(TVG_LOADER_FT)
+    set(THORVG_FT_LOADER_SUPPORT 1)
 endif()
 
 if(TVG_LOADER_WEBP)
@@ -337,6 +354,18 @@ if(TVG_LOADER_TTF)
         src/loaders/ttf/tvgTtfReader.cpp
     )
     list(APPEND THORVG_PRIVATE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src/loaders/ttf)
+endif()
+
+# FT Loader (FreeType + HarfBuzz)
+if(TVG_LOADER_FT)
+    find_package(Freetype REQUIRED)
+    find_package(harfbuzz CONFIG REQUIRED)
+    list(APPEND THORVG_SOURCES
+        src/loaders/ft/tvgFtFace.cpp
+        src/loaders/ft/tvgFtFontManager.cpp
+        src/loaders/ft/tvgFtLoader.cpp
+    )
+    list(APPEND THORVG_PRIVATE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src/loaders/ft)
 endif()
 
 # Lottie Loader
@@ -771,6 +800,11 @@ if(WEBP_FOUND AND NOT TVG_STATIC_MODULES AND TVG_LOADER_WEBP)
     target_include_directories(thorvg PRIVATE ${WEBP_INCLUDE_DIRS})
 endif()
 
+# FreeType + HarfBuzz
+if(TVG_LOADER_FT)
+    list(APPEND THORVG_LINK_LIBS Freetype::Freetype harfbuzz::harfbuzz)
+endif()
+
 # WebGPU
 if(TVG_ENGINE_WG AND WGPU_FOUND)
     list(APPEND THORVG_LINK_LIBS ${WGPU_LIBRARIES})
@@ -918,13 +952,35 @@ if(TVG_BUILD_TESTS)
         test/testSwEngine.cpp
         test/testText.cpp
     )
-    
+
+    if(TVG_LOADER_FT)
+        list(APPEND TEST_SOURCES test/testFtLoader.cpp)
+    endif()
+
     add_executable(tvgUnitTests ${TEST_SOURCES})
     target_include_directories(tvgUnitTests PRIVATE
         ${THORVG_INCLUDE_DIRS}
         ${CMAKE_CURRENT_SOURCE_DIR}/test
     )
+    target_compile_definitions(tvgUnitTests PRIVATE
+        TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/resources"
+    )
+    if(TVG_LOADER_LOTTIE)
+        target_include_directories(tvgUnitTests PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/loaders/lottie
+        )
+    endif()
     target_link_libraries(tvgUnitTests PRIVATE thorvg)
+
+    #the FT loader test pokes the internal FtFace class directly
+    if(TVG_LOADER_FT)
+        target_include_directories(tvgUnitTests PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/common
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/loaders/ft
+        )
+        target_link_libraries(tvgUnitTests PRIVATE Freetype::Freetype harfbuzz::harfbuzz)
+    endif()
     
     if(NOT TVG_BUILD_SHARED)
         target_compile_definitions(tvgUnitTests PRIVATE TVG_STATIC)
@@ -963,6 +1019,7 @@ message(STATUS "")
 message(STATUS "Loaders:")
 message(STATUS "  SVG:             ${TVG_LOADER_SVG}")
 message(STATUS "  TTF:             ${TVG_LOADER_TTF}")
+message(STATUS "  FT (FT+HB):      ${TVG_LOADER_FT}")
 message(STATUS "  LOTTIE:          ${TVG_LOADER_LOTTIE}")
 message(STATUS "  PNG:             ${TVG_LOADER_PNG}")
 message(STATUS "  JPG:             ${TVG_LOADER_JPG}")
