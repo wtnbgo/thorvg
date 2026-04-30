@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 - 2026 ThorVG project. All rights reserved.
+ * Copyright (c) 2026 ThorVG project. All rights reserved.
 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,41 +20,37 @@
  * SOFTWARE.
  */
 
-#include "tvgSwCommon.h"
+#ifndef _TVG_GL_TEXTURE_MGR_H_
+#define _TVG_GL_TEXTURE_MGR_H_
 
-/************************************************************************/
-/* Internal Class Implementation                                        */
-/************************************************************************/
+#include "tvgGlCommon.h"
+#include "tvgInlist.h"
 
-static thread_local SwMpool* _pool = nullptr;
-static Array<SwMpool*> _pools;
-static uint32_t _threads = 0;
-static StrictKey _key;
-
-/************************************************************************/
-/* External Class Implementation                                        */
-/************************************************************************/
-
-SwMpool* mpoolReq()
+struct TextureMgr
 {
-    if (!_pool) {
-        _pool = new SwMpool(_threads);
-        ScopedLock lock(_key);
-        _pools.push(_pool);
-    }
-    return _pool;
-}
+    GLuint retain(const RenderSurface* surface, FilterMethod filter);
+    GLuint release(const RenderSurface* surface, FilterMethod filter, GLuint texId);
+    void clear();
 
-void mpoolInit(uint32_t threads)
-{
-    _threads = threads;
-}
+    struct Entry
+    {
+        GLuint texId = 0;
+        uint32_t refCnt = 0;
+    };
 
-void mpoolTerm()
-{
-    for (auto p : _pools) {
-        delete p;
-        _pool = nullptr;
-    }
-    _pools.reset();
-}
+    struct SurfaceEntry
+    {
+        INLIST_ITEM(SurfaceEntry);
+        const RenderSurface* surface = nullptr;
+        Entry bilinear;
+        Entry nearest;
+    };
+
+    SurfaceEntry* find(const RenderSurface* surface);
+    static void upload(GLuint texId, const RenderSurface* surface, FilterMethod filter);
+
+    tvg::Inlist<SurfaceEntry> surfaces;  // Cached textures keyed by RenderSurface.
+    uint16_t stamp = 1;                  // Non-zero rolling stamp for stale texture ownership checks.
+};
+
+#endif /* _TVG_GL_TEXTURE_MGR_H_ */

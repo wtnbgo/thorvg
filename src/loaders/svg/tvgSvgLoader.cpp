@@ -26,7 +26,7 @@
 #include "tvgLoader.h"
 #include "tvgXmlParser.h"
 #include "tvgSvgLoader.h"
-#include "tvgSvgSceneBuilder.h"
+#include "tvgSvgBuilder.h"
 #include "tvgSvgCssStyle.h"
 #include "tvgSvgUtil.h"
 
@@ -3090,24 +3090,32 @@ static void _clonePostponedNodes(Inlist<SvgNodeIdPair>* cloneNodes, SvgNode* doc
     }
 }
 
+static int _svgLoaderParserXmlTagName(const char* content, char* tagName, unsigned int tagNameSize)
+{
+    content = svgUtilSkipWhiteSpace(content, nullptr);
+    auto itr = content;
+    while (itr && *itr != '>') itr++;
+    if (!itr) return -1;
+
+    int sz = itr - content;
+    while ((sz > 0) && (isspace(content[sz - 1]))) sz--;
+    if ((unsigned int)sz >= tagNameSize) sz = tagNameSize - 1;
+    strncpy(tagName, content, sz);
+    tagName[sz] = '\0';
+    return sz;
+}
+
+
 static void _svgLoaderParserXmlClose(SvgParserContext* ctx, const char* content, unsigned int length)
 {
-    const char* itr = nullptr;
-    int sz = length;
     char tagName[20] = "";
+    auto sz = _svgLoaderParserXmlTagName(content, tagName, sizeof(tagName));
+    if (sz < 0) return;
 
-    content = svgUtilSkipWhiteSpace(content, nullptr);
-    itr = content;
-    while ((itr != nullptr) && *itr != '>') itr++;
-
-    if (itr) {
-        sz = itr - content;
-        while ((sz > 0) && (isspace(content[sz - 1]))) sz--;
-        if ((unsigned int)sz >= sizeof(tagName)) sz = sizeof(tagName) - 1;
-        strncpy(tagName, content, sz);
-        tagName[sz] = '\0';
+    if (ctx->gradientStack.count > 0 && !ctx->gradientStack.last()) {
+        ctx->gradientStack.pop();
+        return;
     }
-    else return;
 
     for (unsigned int i = 0; i < sizeof(groupTags) / sizeof(groupTags[0]); i++) {
         if (!strncmp(tagName, groupTags[i].tag, sz)) {
@@ -3159,6 +3167,31 @@ static void _svgLoaderParserXmlOpen(SvgParserContext* ctx, const char* content, 
         strncpy(tagName, content, sz);
         tagName[sz] = '\0';
         attrsLength = length - sz;
+    }
+
+    if (ctx->gradientStack.count > 0 && !ctx->gradientStack.last()) {
+        if (!empty) ctx->gradientStack.push(nullptr);
+        return;
+    }
+
+    if (STR_AS(tagName, "stop")) {
+        if (ctx->gradientStack.empty()) {
+            TVGLOG("SVG", "Ignoring <%s> declared outside of a gradient element", tagName);
+            if (!empty) ctx->gradientStack.push(nullptr);
+            return;
+        }
+        ctx->parser->gradStop = {0.0f, 0, 0, 0, 255};
+        ctx->parser->flags = SvgStopStyleFlags::StopDefault;
+        xmlParseAttributes(attrs, attrsLength, _attrParseStops, ctx);
+        ctx->gradientStack.last()->stops.push(ctx->parser->gradStop);
+        if (!empty) ctx->gradientStack.push(nullptr);
+        return;
+    }
+
+    if (ctx->gradientStack.count > 0) {
+        TVGLOG("SVG", "Ignoring <%s> declared inside a gradient element", tagName);
+        if (!empty) ctx->gradientStack.push(nullptr);
+        return;
     }
 
     if ((method = _findGroupFactory(tagName))) {
@@ -3218,16 +3251,6 @@ static void _svgLoaderParserXmlOpen(SvgParserContext* ctx, const char* content, 
             }
         }
         if (!empty) ctx->gradientStack.push(gradient);
-    } else if (STR_AS(tagName, "stop")) {
-        if (ctx->gradientStack.count == 0) {
-            TVGLOG("SVG", "Stop element is used outside of the Gradient element");
-            return;
-        }
-        /* default value for opacity */
-        ctx->parser->gradStop = {0.0f, 0, 0, 0, 255};
-        ctx->parser->flags = SvgStopStyleFlags::StopDefault;
-        xmlParseAttributes(attrs, attrsLength, _attrParseStops, ctx);
-        ctx->gradientStack.last()->stops.push(ctx->parser->gradStop);
     } else {
         if (!isIgnoreUnsupportedLogElements(tagName)) TVGLOG("SVG", "Unsupported elements used [Elements: %s]", tagName);
     }
