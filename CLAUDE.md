@@ -8,7 +8,21 @@ This is a fork of [thorvg/thorvg](https://github.com/thorvg/thorvg) — a C++14 
 
 **This fork's purpose**: the upstream project builds with Meson only. The `cmake` branch (currently checked out) adds a parallel CMake build system that links via vcpkg manifest mode. Both build systems coexist — when adding/removing source files, **update both `meson.build` files and the top-level `CMakeLists.txt`** or one build will silently break. Fork-specific docs are in `README_cmake.md` (Japanese).
 
-`機能追加.txt` is the user's working note (Japanese) describing a planned feature: a FreeType + HarfBuzz multilingual text path toggleable at compile time alongside the existing TTF loader, with font fallback and emoji support. Reference implementation lives at `../richtext` (outside this repo). Not yet started.
+`機能追加.txt` is the user's working note (Japanese) for the FreeType + HarfBuzz multilingual text feature. **This feature is now implemented** in `src/loaders/ft/` (commits `a954053`, `3f06c56`) — see the FT loader section below. The note is kept in-tree as historical spec but is untracked. Reference implementation that informed the design lives at `../richtext` (outside this repo).
+
+### FT loader (FreeType + HarfBuzz)
+
+Compile-time alternative to the built-in TTF loader, mutually exclusive via CMake (`TVG_LOADER_FT` vs `TVG_LOADER_TTF`). Enable with `-DTVG_LOADER_FT=ON -DTVG_LOADER_TTF=OFF -DVCPKG_MANIFEST_FEATURES=freetype`. Provides:
+
+- **`src/loaders/ft/tvgFtFace`**: FT_Face + companion `hb_font_t` wrapper. Outline extraction (FT_LOAD_NO_SCALE, quadratic→cubic Bezier conversion, Y-axis flip into thorvg's y-down convention). `hb_font` scale is locked to font units so HB advances match outline coords without per-call rescaling.
+- **`src/loaders/ft/tvgFtFontManager`**: process-wide registry. `Text::load()` order = fallback priority order. `fallback(codepoint, primary)` returns the first registered face other than `primary` that has the codepoint.
+- **`src/loaders/ft/tvgFtLoader`**: `FontLoader` impl. Each source line is run-segmented by face, each run is shaped independently with HB, outputs are normalized to primary font units via `unitScale = primaryUpem / runUpem` so mixed-UPM fonts compose correctly. All four wrap modes (Character/Word/Smart/Ellipsis) are ported and operate on the post-shape `Glyph[]` stream — word-break detection uses HB cluster values to look up source whitespace.
+- **`Text::locale(const char*)`** in `inc/thorvg.h`: BCP47 tag for HB language-sensitive shaping (CJK character variants). Returns `Result::NonSupport` on TTF builds. Marked as fork extension in the doc comment; not in upstream.
+- **`tools/ft-text-sample/`**: a small executable (built when `TVG_LOADER_FT=ON`) that loads a primary + fallback font and renders mixed-language text to a PNG via lodepng. Useful for visual smoke-testing.
+
+Tests live in `test/testFtLoader.cpp` under the `[FtLoader]` Catch tag. They poke `FtFace` and `FtFontManager` directly via private include paths added in the test target's CMake config — when you add a new internal class, add its include to that block too.
+
+**Out of scope (deferred):** color emoji (sbix/CBDT bitmap and COLRv1 vector — would require restructuring `TextImpl` from `Shape*` to a `Scene` with mixed Shape + Picture children), meson-side build wiring, C API binding for `Text::locale`, and Android cross-toolchain config.
 
 ## Build
 
