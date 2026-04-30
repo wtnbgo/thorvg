@@ -913,6 +913,22 @@ if(TVG_TOOL_SVG2PNG)
     )
 endif()
 
+if(TVG_LOADER_FT)
+    add_executable(tvg-ft-text-sample
+        tools/ft-text-sample/ft-text-sample.cpp
+        tools/svg2png/lodepng.cpp
+    )
+    target_include_directories(tvg-ft-text-sample PRIVATE
+        ${THORVG_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/svg2png
+    )
+    target_link_libraries(tvg-ft-text-sample PRIVATE thorvg)
+    target_compile_options(tvg-ft-text-sample PRIVATE ${THORVG_COMPILE_FLAGS})
+    if(NOT TVG_BUILD_SHARED)
+        target_compile_definitions(tvg-ft-text-sample PRIVATE TVG_STATIC)
+    endif()
+endif()
+
 if(TVG_TOOL_LOTTIE2GIF)
     add_executable(tvg-lottie2gif
         tools/lottie2gif/lottie2gif.cpp
