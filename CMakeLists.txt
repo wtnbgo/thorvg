@@ -279,7 +279,9 @@ if(TVG_ENGINE_GL)
         src/renderer/gl_engine/tvgGlRenderTask.cpp
         src/renderer/gl_engine/tvgGlShader.cpp
         src/renderer/gl_engine/tvgGlShaderSrc.cpp
+        src/renderer/gl_engine/tvgGlSolidBatch.cpp
         src/renderer/gl_engine/tvgGlTessellator.cpp
+        src/renderer/gl_engine/tvgGlTextureMgr.cpp
     )
 endif()
 # Always include GL engine headers for conditional compilation
@@ -317,10 +319,10 @@ list(APPEND THORVG_PRIVATE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src/loaders)
 # SVG Loader
 if(TVG_LOADER_SVG OR TVG_TOOL_SVG2PNG)
     list(APPEND THORVG_SOURCES
+        src/loaders/svg/tvgSvgBuilder.cpp
         src/loaders/svg/tvgSvgCssStyle.cpp
         src/loaders/svg/tvgSvgLoader.cpp
         src/loaders/svg/tvgSvgPath.cpp
-        src/loaders/svg/tvgSvgSceneBuilder.cpp
         src/loaders/svg/tvgSvgUtil.cpp
         src/loaders/svg/tvgXmlParser.cpp
     )
@@ -544,8 +546,6 @@ if(TVG_LOADER_LOTTIE OR TVG_TOOL_LOTTIE2GIF)
             ${JERRYSCRIPT_DIR}/ecma/builtin-objects/typedarray/ecma-builtin-biguint64array-prototype.cpp
             ${JERRYSCRIPT_DIR}/ecma/builtin-objects/typedarray/ecma-builtin-float32array.cpp
             ${JERRYSCRIPT_DIR}/ecma/builtin-objects/typedarray/ecma-builtin-float32array-prototype.cpp
-            ${JERRYSCRIPT_DIR}/ecma/builtin-objects/typedarray/ecma-builtin-float64array.cpp
-            ${JERRYSCRIPT_DIR}/ecma/builtin-objects/typedarray/ecma-builtin-float64array-prototype.cpp
             ${JERRYSCRIPT_DIR}/ecma/builtin-objects/typedarray/ecma-builtin-int8array.cpp
             ${JERRYSCRIPT_DIR}/ecma/builtin-objects/typedarray/ecma-builtin-int8array-prototype.cpp
             ${JERRYSCRIPT_DIR}/ecma/builtin-objects/typedarray/ecma-builtin-int16array.cpp
