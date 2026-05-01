@@ -501,10 +501,12 @@ void FtLoader::metrics(const FontMetrics& fm, TextMetrics& out)
     auto scale = (fm.fontSize * FontLoader::DPI) / static_cast<float>(ftFace.unitsPerEm());
     out.advance = static_cast<float>(ftFace.lineHeight()) * scale;
     out.ascent = static_cast<float>(ftFace.ascent()) * scale;
-    out.descent = static_cast<float>(ftFace.descent()) * scale;   //FT 規約で負値
+    out.descent = static_cast<float>(ftFace.descent()) * scale;   //negative per FT convention
     //FreeType doesn't surface linegap directly via the public face fields.
-    //hhea: face->height = ascender - descender + lineGap (descender < 0).
+    //hhea: face->height = ascender - descender + lineGap, with descender < 0.
     //So lineGap = height - (ascender - descender) = advance - ascent + descent.
+    //(Earlier `advance - (ascent + descent)` had the descent sign inverted, which
+    //inflated linegap by ~2|descent| and overgrew text bounding boxes vertically.)
     out.linegap = out.advance - out.ascent + out.descent;
     if (out.linegap < 0.0f) out.linegap = 0.0f;
 }
