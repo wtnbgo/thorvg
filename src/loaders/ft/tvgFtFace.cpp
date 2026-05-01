@@ -270,8 +270,11 @@ int16_t FtFace::ascent() const
 int16_t FtFace::descent() const
 {
     if (!face) return 0;
-    //FreeType reports descender as a negative value; thorvg uses positive.
-    return static_cast<int16_t>(-face->descender);
+    //ThorVG-wide convention: TextMetrics::descent is negative (matches TtfReader's
+    //hhea.descent passthrough and FtLoader::metrics's "negative per FT convention"
+    //comment). An earlier version negated this; downstream sign cancelled for
+    //horizontal placement but inverted measured box height so descenders escaped.
+    return face->descender;
 }
 
 
