@@ -133,6 +133,10 @@ uint16_t THORVG_VERSION_NUMBER()
 }
 
 
+#ifndef THORVG_NO_GLOBAL_NEW_OVERRIDE
+// 組み込み側で global operator new を別途 override している場合 (たとえば
+// アプリ全体のメモリ統計を取りたい等)、THORVG_NO_GLOBAL_NEW_OVERRIDE を
+// define すると ThorVG 側の override をビルド対象から外す。
 void* operator new(std::size_t size)
 {
     return tvg::malloc(size);
@@ -155,3 +159,4 @@ void operator delete[](void* ptr) noexcept
 {
     tvg::free(ptr);
 }
+#endif
