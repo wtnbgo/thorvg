@@ -397,6 +397,22 @@ struct GlyphMetrics
 
 
 /**
+ * @brief Identifies a font face by its embedded family / style name.
+ *
+ * Returned by @ref Text::info(). The pointed-to strings are owned by the
+ * underlying font loader and remain valid until the font is unloaded via
+ * @ref Text::unload(). Make a copy if you need to keep them longer.
+ *
+ * @note Experimental API
+ */
+struct TextInfo
+{
+    const char* family;  ///< Font family name from the file (e.g. "Noto Sans JP"). nullptr if unavailable.
+    const char* style;   ///< Font style name from the file  (e.g. "Regular", "Bold"). nullptr if unavailable.
+};
+
+
+/**
  * @class Paint
  *
  * @brief An abstract class for managing graphical elements.
@@ -2256,6 +2272,24 @@ struct TVG_API Text : Paint
      * @since 0.15
      */
     static Result unload(const char* filename) noexcept;
+
+    /**
+     * @brief Queries the font family / style names of a previously loaded font.
+     *
+     * Use @ref Text::load() first; this function only inspects fonts that are
+     * already in the loader cache. The returned @c TextInfo strings are owned
+     * by the loader and live until the font is unloaded.
+     *
+     * @param[in] filename The same key used with @ref Text::load() (filename or explicit alias).
+     * @param[out] out On success, populated with the font's embedded family / style names.
+     *
+     * @retval Result::InvalidArguments If @p filename is null.
+     * @retval Result::InsufficientCondition If no font is loaded for @p filename.
+     * @retval Result::NonSupport If the font loader does not expose these names.
+     *
+     * @note Experimental API
+     */
+    static Result info(const char* filename, TextInfo& out) noexcept;
 
     /**
      * @brief Creates a new Text object.

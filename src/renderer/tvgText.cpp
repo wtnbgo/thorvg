@@ -91,6 +91,26 @@ Result Text::unload(const char* filename) noexcept
 }
 
 
+Result Text::info(const char* filename, TextInfo& out) noexcept
+{
+    out.family = nullptr;
+    out.style = nullptr;
+    if (!filename) return Result::InvalidArguments;
+
+    auto loader = LoaderMgr::font(filename);
+    if (!loader) return Result::InsufficientCondition;
+
+    auto fl = static_cast<FontLoader*>(loader);
+    out.family = fl->family;
+    out.style = fl->style;
+
+    //LoaderMgr::font() incremented sharing as if we were about to use it for
+    //rendering. We only inspect metadata, so give the reference back.
+    if (loader->sharing > 0) --loader->sharing;
+    return Result::Success;
+}
+
+
 Result Text::align(float x, float y) noexcept
 {
     to<TextImpl>(this)->fm.align = {x, y};

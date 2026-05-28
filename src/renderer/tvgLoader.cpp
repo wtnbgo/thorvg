@@ -436,12 +436,34 @@ tvg::LoadModule* LoaderMgr::loader(const char* name, const char* data, uint32_t 
 }
 
 
+//Match `query` against a font loader by either the load-time `name`
+//(filename / explicit alias), the font's own `family`, or "family Style"
+//concatenated. Allows Text::font() to accept CSS-style family names like
+//"Noto Sans JP" or "Noto Sans JP Bold" without per-app alias registration.
+static bool matchFontName(const char* query, const FontLoader* fl)
+{
+    if (!query || !fl) return false;
+    if (fl->name   && tvg::equal(query, fl->name))   return true;
+    if (fl->family && tvg::equal(query, fl->family)) return true;
+    if (fl->family && fl->style) {
+        auto flen = strlen(fl->family);
+        auto slen = strlen(fl->style);
+        auto qlen = strlen(query);
+        if (qlen == flen + 1 + slen &&
+            memcmp(query, fl->family, flen) == 0 &&
+            query[flen] == ' ' &&
+            memcmp(query + flen + 1, fl->style, slen) == 0) return true;
+    }
+    return false;
+}
+
+
 tvg::LoadModule* LoaderMgr::font(const char* name)
 {
     ScopedLock lock(_key);
     INLIST_FOREACH(_activeLoaders, loader) {
         if (loader->type != FileType::Ttf) continue;
-        if (loader->cached && tvg::equal(name, static_cast<FontLoader*>(loader)->name)) {
+        if (loader->cached && matchFontName(name, static_cast<FontLoader*>(loader))) {
             ++loader->sharing;
             return loader;
         }

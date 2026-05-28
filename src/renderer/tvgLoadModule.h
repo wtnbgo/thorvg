@@ -161,7 +161,9 @@ struct FontLoader : LoadModule
 {
     static constexpr const float DPI = 96.0f / 72.0f;   //dpi base?
 
-    char* name = nullptr;
+    char* name = nullptr;       //identifier passed to Text::load() (filename or user-given name)
+    char* family = nullptr;     //font family name extracted from the font file (e.g. "Noto Sans JP")
+    char* style = nullptr;      //font style name extracted from the font file (e.g. "Regular", "Bold")
 
     FontLoader(FileType type) : LoadModule(type) {}
 

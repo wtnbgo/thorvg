@@ -110,6 +110,16 @@ FtLoader::~FtLoader()
 }
 
 
+//Cache the font family / style names from the FT_Face into the FontLoader
+//base so LoaderMgr::font() can match them in addition to the `name` key.
+static void captureFaceNames(FontLoader& loader, FT_Face face)
+{
+    if (!face) return;
+    if (face->family_name) loader.family = tvg::duplicate(face->family_name);
+    if (face->style_name)  loader.style  = tvg::duplicate(face->style_name);
+}
+
+
 bool FtLoader::open(const char* path)
 {
 #ifdef THORVG_FILE_IO_SUPPORT
@@ -126,6 +136,7 @@ bool FtLoader::open(const char* path)
     //ownsData flag, since LoadModule::open()'s allocation must be freed by us.
     ftFace.ownsData = true;
     name = tvg::filename(path);
+    captureFaceNames(*this, ftFace.face);
     FtFontManager::instance().enroll(&ftFace);
     return true;
 #else
@@ -137,6 +148,7 @@ bool FtLoader::open(const char* path)
 bool FtLoader::open(const char* data, uint32_t size, const char* /*rpath*/, bool copy)
 {
     if (!ftFace.open(data, size, copy)) return false;
+    captureFaceNames(*this, ftFace.face);
     FtFontManager::instance().enroll(&ftFace);
     return true;
 }
@@ -152,6 +164,10 @@ bool FtLoader::close()
     ftFace.release();
     tvg::free(name);
     name = nullptr;
+    tvg::free(family);
+    family = nullptr;
+    tvg::free(style);
+    style = nullptr;
     return true;
 }
 
