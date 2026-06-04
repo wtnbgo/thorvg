@@ -358,8 +358,14 @@ endif()
 
 # FT Loader (FreeType + HarfBuzz)
 if(TVG_LOADER_FT)
-    find_package(Freetype REQUIRED)
-    find_package(harfbuzz CONFIG REQUIRED)
+    # 親プロジェクトが Freetype / harfbuzz を提供済み (例: FetchContent で
+    # ビルドした target が見えている) 場合は find_package をスキップ。
+    if(NOT TARGET freetype AND NOT TARGET Freetype::Freetype)
+        find_package(Freetype REQUIRED)
+    endif()
+    if(NOT TARGET harfbuzz AND NOT TARGET harfbuzz::harfbuzz)
+        find_package(harfbuzz CONFIG REQUIRED)
+    endif()
     list(APPEND THORVG_SOURCES
         src/loaders/ft/tvgFtFace.cpp
         src/loaders/ft/tvgFtFontManager.cpp
@@ -829,68 +835,75 @@ if(WIN32)
 endif()
 
 # Install targets
-include(GNUInstallDirs)
+# 親プロジェクトに add_subdirectory される使い方では install(EXPORT) が
+# harfbuzz など下流の非エクスポートターゲットを引きずって configure 失敗
+# するため、TVG_INSTALL=OFF で install ルールごと無効化できるようにする。
+option(TVG_INSTALL "Generate install/export rules" ON)
 
-install(TARGETS thorvg
-    EXPORT thorvgTargets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+if(TVG_INSTALL)
+    include(GNUInstallDirs)
 
-install(FILES inc/thorvg.h
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/thorvg-${THORVG_VERSION_MAJOR}
-)
+    install(TARGETS thorvg
+        EXPORT thorvgTargets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
 
-if(TVG_BINDINGS_CAPI)
-    install(FILES src/bindings/capi/thorvg_capi.h
+    install(FILES inc/thorvg.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/thorvg-${THORVG_VERSION_MAJOR}
     )
-endif()
 
-if(TVG_LOADER_LOTTIE OR TVG_TOOL_LOTTIE2GIF)
-    install(FILES src/loaders/lottie/thorvg_lottie.h
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/thorvg-${THORVG_VERSION_MAJOR}
+    if(TVG_BINDINGS_CAPI)
+        install(FILES src/bindings/capi/thorvg_capi.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/thorvg-${THORVG_VERSION_MAJOR}
+        )
+    endif()
+
+    if(TVG_LOADER_LOTTIE OR TVG_TOOL_LOTTIE2GIF)
+        install(FILES src/loaders/lottie/thorvg_lottie.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/thorvg-${THORVG_VERSION_MAJOR}
+        )
+    endif()
+
+    # pkg-config file
+    configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/thorvg.pc.in
+        ${CMAKE_CURRENT_BINARY_DIR}/thorvg-${THORVG_VERSION_MAJOR}.pc
+        @ONLY
+    )
+
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/thorvg-${THORVG_VERSION_MAJOR}.pc
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
+    )
+
+    # CMake package config
+    install(EXPORT thorvgTargets
+        FILE thorvgTargets.cmake
+        NAMESPACE thorvg::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/thorvg
+    )
+
+    include(CMakePackageConfigHelpers)
+
+    configure_package_config_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/thorvgConfig.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/thorvgConfig.cmake
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/thorvg
+    )
+
+    write_basic_package_version_file(
+        ${CMAKE_CURRENT_BINARY_DIR}/thorvgConfigVersion.cmake
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion
+    )
+
+    install(FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/thorvgConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/thorvgConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/thorvg
     )
 endif()
-
-# pkg-config file
-configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/thorvg.pc.in
-    ${CMAKE_CURRENT_BINARY_DIR}/thorvg-${THORVG_VERSION_MAJOR}.pc
-    @ONLY
-)
-
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/thorvg-${THORVG_VERSION_MAJOR}.pc
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
-)
-
-# CMake package config
-install(EXPORT thorvgTargets
-    FILE thorvgTargets.cmake
-    NAMESPACE thorvg::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/thorvg
-)
-
-include(CMakePackageConfigHelpers)
-
-configure_package_config_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/thorvgConfig.cmake.in
-    ${CMAKE_CURRENT_BINARY_DIR}/thorvgConfig.cmake
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/thorvg
-)
-
-write_basic_package_version_file(
-    ${CMAKE_CURRENT_BINARY_DIR}/thorvgConfigVersion.cmake
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-
-install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/thorvgConfig.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/thorvgConfigVersion.cmake
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/thorvg
-)
 
 # Tools
 if(TVG_TOOL_SVG2PNG)
