@@ -358,14 +358,39 @@ endif()
 
 # FT Loader (FreeType + HarfBuzz)
 if(TVG_LOADER_FT)
-    # 親プロジェクトが Freetype / harfbuzz を提供済み (例: FetchContent で
-    # ビルドした target が見えている) 場合は find_package をスキップ。
+    # Freetype: 親プロジェクトが提供済みなら再利用。なければ標準 FindFreetype
+    # モジュールで探す (vcpkg の freetype-config も透過的に拾える)。
     if(NOT TARGET freetype AND NOT TARGET Freetype::Freetype)
         find_package(Freetype REQUIRED)
     endif()
+
+    # HarfBuzz: 親プロジェクトが harfbuzz target を提供済みならそれを使う。
+    # そうでなければ FetchContent で自前ビルドする。vcpkg の harfbuzz ポート
+    # は meson 経由で日本語ロケール Windows + NX/Prospero toolchain で cp932
+    # デコードエラーを起こすため、find_package(harfbuzz) はあてにしない。
     if(NOT TARGET harfbuzz AND NOT TARGET harfbuzz::harfbuzz)
-        find_package(harfbuzz CONFIG REQUIRED)
+        include(FetchContent)
+        set(HB_HAVE_FREETYPE ON CACHE BOOL "Enable freetype interop helpers" FORCE)
+        set(HB_HAVE_ICU OFF CACHE BOOL "Disable ICU" FORCE)
+        set(HB_BUILD_SUBSET OFF CACHE BOOL "" FORCE)
+        set(HB_BUILD_UTILS OFF CACHE BOOL "" FORCE)
+        set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
+
+        FetchContent_Declare(
+            harfbuzz_source
+            GIT_REPOSITORY https://github.com/harfbuzz/harfbuzz.git
+            GIT_TAG 13.1.1
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_MakeAvailable(harfbuzz_source)
     endif()
+    # 下の THORVG_LINK_LIBS は `harfbuzz::harfbuzz` (名前空間付き) を要求するが、
+    # upstream harfbuzz の CMake は bare `harfbuzz` しか作らないのでエイリアス
+    # を足して両形式で参照できるようにする。
+    if(NOT TARGET harfbuzz::harfbuzz)
+        add_library(harfbuzz::harfbuzz ALIAS harfbuzz)
+    endif()
+
     list(APPEND THORVG_SOURCES
         src/loaders/ft/tvgFtFace.cpp
         src/loaders/ft/tvgFtFontManager.cpp
