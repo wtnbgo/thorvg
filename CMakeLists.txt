@@ -59,7 +59,6 @@ option(TVG_TOOL_LOTTIE2GIF "Build lottie2gif tool" OFF)
 
 # Extra options
 option(TVG_LOTTIE_EXPRESSIONS "Enable Lottie Expressions support" ON)
-option(TVG_OPENMP "Enable OpenMP support" ON)
 option(TVG_OPENGL_ES "Use OpenGL ES instead of OpenGL" OFF)
 option(TVG_GL_INITPROC "Use user-provided GL function loader" OFF)
 
@@ -157,10 +156,6 @@ endif()
 
 if(TVG_LOTTIE_EXPRESSIONS AND (TVG_LOADER_LOTTIE OR TVG_TOOL_LOTTIE2GIF))
     set(THORVG_LOTTIE_EXPRESSIONS_SUPPORT 1)
-endif()
-
-if(TVG_OPENMP)
-    set(THORVG_OPENMP_SUPPORT 1)
 endif()
 
 # Generate config.h
@@ -807,12 +802,13 @@ if(TVG_THREADS)
     endif()
 endif()
 
-# OpenMP support
-if(TVG_OPENMP)
-    find_package(OpenMP QUIET)
-    if(OpenMP_CXX_FOUND)
-        list(APPEND THORVG_LINK_LIBS OpenMP::OpenMP_CXX)
-    endif()
+# OpenMP support (auto-detected)
+# Linking OpenMP::OpenMP_CXX propagates the compiler's OpenMP flag (e.g. -fopenmp,
+# /openmp) to thorvg's sources, which in turn defines _OPENMP. The source code keys
+# off _OPENMP directly, so no extra config.h toggle is needed.
+find_package(OpenMP QUIET)
+if(OpenMP_CXX_FOUND)
+    list(APPEND THORVG_LINK_LIBS OpenMP::OpenMP_CXX)
 endif()
 
 # External PNG
@@ -1091,7 +1087,7 @@ message(STATUS "  lottie2gif:      ${TVG_TOOL_LOTTIE2GIF}")
 message(STATUS "")
 message(STATUS "Extra:")
 message(STATUS "  Lottie Expr:     ${TVG_LOTTIE_EXPRESSIONS}")
-message(STATUS "  OpenMP:          ${TVG_OPENMP}")
+message(STATUS "  OpenMP:          ${OpenMP_CXX_FOUND}")
 if(TVG_ENGINE_GL)
     if(TVG_OPENGL_ES)
         message(STATUS "  OpenGL Variant:  OpenGL ES")

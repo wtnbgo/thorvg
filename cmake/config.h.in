@@ -43,7 +43,6 @@
 
 /* Extra */
 #cmakedefine THORVG_LOTTIE_EXPRESSIONS_SUPPORT 1
-#cmakedefine THORVG_OPENMP_SUPPORT 1
 
 /* Miscellaneous */
 #define WIN32_LEAN_AND_MEAN 1

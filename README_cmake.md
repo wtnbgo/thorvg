@@ -92,7 +92,6 @@ CMake のオプションは `-D` フラグを使用して設定します。
 | オプション | デフォルト | 説明 |
 |------------|-----------|------|
 | `TVG_LOTTIE_EXPRESSIONS` | `ON` | Lottie Expressions (JavaScript) サポート |
-| `TVG_OPENMP` | `ON` | OpenMP による並列処理 |
 | `TVG_OPENGL_ES` | `OFF` | OpenGL の代わりに OpenGL ES を使用 |
 | `TVG_GL_INITPROC` | `OFF` | ユーザー提供の GL 関数ローダーを使用 |
 | `TVG_BUILD_TESTS` | `OFF` | ユニットテストをビルド |
@@ -177,9 +176,11 @@ cmake -B build \
 cmake -B build \
     -DCMAKE_BUILD_TYPE=Release \
     -DTVG_SIMD=ON \
-    -DTVG_THREADS=ON \
-    -DTVG_OPENMP=ON
+    -DTVG_THREADS=ON
 ```
+
+> OpenMP は `find_package(OpenMP)` で自動検出されます。見つかればリンクされ、
+> コンパイラの OpenMP フラグにより `_OPENMP` が define されて並列処理が有効化されます。
 
 ### 全機能有効化
 

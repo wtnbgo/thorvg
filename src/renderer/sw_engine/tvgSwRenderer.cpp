@@ -25,7 +25,7 @@
 #include "tvgTaskScheduler.h"
 #include "tvgSwRenderer.h"
 
-#ifdef THORVG_OPENMP_SUPPORT
+#ifdef _OPENMP
     #include <omp.h>
 #endif
 
@@ -917,7 +917,7 @@ SwRenderer::SwRenderer(uint32_t threads, EngineOption op)
     //initialize engine
     _rendererMtx.lock();
     if (_rendererCnt == -1) {
-#ifdef THORVG_OPENMP_SUPPORT
+#ifdef _OPENMP
         omp_set_num_threads(threads);
 #endif
         mpoolInit(threads);
