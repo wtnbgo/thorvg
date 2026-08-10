@@ -171,7 +171,7 @@ static tvg::LoadModule* _find(FileType type)
 }
 
 
-#ifdef THORVG_FILE_IO_SUPPORT
+#if defined(THORVG_FILE_IO_SUPPORT) || defined(THORVG_GW_LOADER_SUPPORT)
 static tvg::LoadModule* _findByPath(const char* filename)
 {
     auto ext = fileext(filename);
