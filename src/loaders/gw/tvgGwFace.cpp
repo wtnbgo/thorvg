@@ -72,6 +72,15 @@ bool GwFace::open(const char* data, uint32_t size, bool copy)
 }
 
 
+bool GwFace::open(const char* key)
+{
+    auto* b = bridge();
+    if (!b || !b->openFaceByKey || !key || !*key) return false;
+    handle = b->openFaceByKey(b->ctx, key);
+    return handle != nullptr;
+}
+
+
 void GwFace::release()
 {
     if (!handle) return;

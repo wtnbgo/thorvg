@@ -51,6 +51,11 @@ struct GwFace
     //Opens a face over font bytes through the bridge. When `copy` is false the
     //caller must keep `data` alive until release().
     bool open(const char* data, uint32_t size, bool copy);
+
+    //Opens a face by HOST KEY through the bridge (shared bytes on the host
+    //side, no copy). Fails when the bridge has no key resolver.
+    bool open(const char* key);
+
     void release();
 
     bool valid() const { return handle != nullptr; }

@@ -55,6 +55,12 @@ typedef struct TvgGwBridge
        the bytes; otherwise the caller keeps them alive until closeFace.
        Returns an opaque face handle, or NULL on failure. */
     void* (*openFace)(void* ctx, const char* data, uint32_t size, int copy);
+
+    /* Open a face by HOST KEY (UTF-8): the bridge resolves the key through
+       the host's storage / font registry (shared bytes, no copy). Returns
+       NULL when the key does not resolve. Optional (may be NULL). */
+    void* (*openFaceByKey)(void* ctx, const char* keyU8);
+
     void  (*closeFace)(void* ctx, void* face);
 
     /* Family / subfamily names (UTF-8). Pointers stay valid until closeFace.

@@ -286,7 +286,9 @@ bool LoaderMgr::retrieve(LoadModule* loader)
 
 tvg::LoadModule* LoaderMgr::loader(const char* filename, bool* invalid)
 {
-#ifdef THORVG_FILE_IO_SUPPORT
+//gw builds keep this path alive for font host-keys (GwLoader::open(path)
+//resolves through the bridge; non-font loaders still fail without FILE_IO).
+#if defined(THORVG_FILE_IO_SUPPORT) || defined(THORVG_GW_LOADER_SUPPORT)
     *invalid = false;
 
     //TODO: make lottie sharable.

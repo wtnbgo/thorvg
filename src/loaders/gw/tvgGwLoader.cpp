@@ -123,23 +123,15 @@ static void captureFaceNames(FontLoader& loader, const GwFace& face)
 
 bool GwLoader::open(const char* path)
 {
-#ifdef THORVG_FILE_IO_SUPPORT
-    uint32_t size = 0;
-    auto buf = LoadModule::open(path, size);
-    if (!buf) return false;
-
-    //the bridge owns a copy; the file buffer is ours to free right away.
-    auto ok = gwFace.open(buf, size, true);
-    tvg::free(buf);
-    if (!ok) return false;
+    //Under the gw loader a "path" is a HOST KEY: the bridge resolves it
+    //through the host's storage / font registry (shared bytes, no file IO
+    //inside ThorVG). Fails cleanly when the key is not a font.
+    if (!gwFace.open(path)) return false;
 
     name = tvg::filename(path);
     captureFaceNames(*this, gwFace);
     GwFontManager::instance().enroll(&gwFace);
     return true;
-#else
-    return false;
-#endif
 }
 
 

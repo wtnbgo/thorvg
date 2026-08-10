@@ -47,7 +47,9 @@ Result Text::size(float size) noexcept
 
 Result Text::load(const char* filename) noexcept
 {
-#ifdef THORVG_FILE_IO_SUPPORT
+//The gw loader opens "paths" as host keys through the bridge (no file IO),
+//so the path-load entry stays available in gw builds even without FILE_IO.
+#if defined(THORVG_FILE_IO_SUPPORT) || defined(THORVG_GW_LOADER_SUPPORT)
     bool invalid; //invalid path
     auto loader = LoaderMgr::loader(filename, &invalid);
     if (loader) {
