@@ -69,7 +69,7 @@ struct TextImpl : Text
         fm.locale = localeTag;
         updated = true;
         impl.mark(RenderUpdateFlag::Path);
-#ifdef THORVG_FT_LOADER_SUPPORT
+#if defined(THORVG_FT_LOADER_SUPPORT) || defined(THORVG_GW_LOADER_SUPPORT)
         return Result::Success;
 #else
         //TTF loader ignores the tag; report it honestly.

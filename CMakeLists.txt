@@ -40,11 +40,12 @@ option(TVG_LOADER_JPG "Enable JPG Loader" OFF)
 option(TVG_LOADER_LOTTIE "Enable Lottie Loader" ON)
 option(TVG_LOADER_TTF "Enable TTF Loader (built-in minimal TrueType reader)" ON)
 option(TVG_LOADER_FT "Enable FreeType+HarfBuzz multilingual text loader (mutually exclusive with TVG_LOADER_TTF)" OFF)
+option(TVG_LOADER_GW "Enable host-bridge text loader (font engine injected via thorvg_gw_bridge.h; mutually exclusive with TVG_LOADER_TTF/FT)" OFF)
 option(TVG_LOADER_WEBP "Enable WebP Loader" OFF)
 
-# TTF and FT loaders are mutually exclusive: both register to FileType::Ttf
-if(TVG_LOADER_TTF AND TVG_LOADER_FT)
-    message(FATAL_ERROR "TVG_LOADER_TTF and TVG_LOADER_FT are mutually exclusive. Disable one of them.")
+# TTF / FT / GW loaders are mutually exclusive: all register to FileType::Ttf
+if((TVG_LOADER_TTF AND TVG_LOADER_FT) OR (TVG_LOADER_TTF AND TVG_LOADER_GW) OR (TVG_LOADER_FT AND TVG_LOADER_GW))
+    message(FATAL_ERROR "TVG_LOADER_TTF / TVG_LOADER_FT / TVG_LOADER_GW are mutually exclusive. Enable at most one of them.")
 endif()
 
 # Saver options
@@ -123,6 +124,10 @@ endif()
 
 if(TVG_LOADER_FT)
     set(THORVG_FT_LOADER_SUPPORT 1)
+endif()
+
+if(TVG_LOADER_GW)
+    set(THORVG_GW_LOADER_SUPPORT 1)
 endif()
 
 if(TVG_LOADER_WEBP)
@@ -392,6 +397,17 @@ if(TVG_LOADER_FT)
         src/loaders/ft/tvgFtLoader.cpp
     )
     list(APPEND THORVG_PRIVATE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src/loaders/ft)
+endif()
+
+# GW Loader (host font-engine bridge; no in-tree FreeType/HarfBuzz)
+if(TVG_LOADER_GW)
+    list(APPEND THORVG_SOURCES
+        src/loaders/gw/tvgGwBridge.cpp
+        src/loaders/gw/tvgGwFace.cpp
+        src/loaders/gw/tvgGwFontManager.cpp
+        src/loaders/gw/tvgGwLoader.cpp
+    )
+    list(APPEND THORVG_PRIVATE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src/loaders/gw)
 endif()
 
 # Lottie Loader
