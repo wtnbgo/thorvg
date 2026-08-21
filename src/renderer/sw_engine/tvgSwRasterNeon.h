@@ -135,6 +135,20 @@ static void neonNormalPixels32(uint32_t* dst, const uint32_t* src, int32_t len, 
 }
 
 
+#if TVG_AARCH64
+//INTERPOLATE() transcribed onto uint32x4 lanes verbatim, with a per-lane
+//weight (0..255 in each u32 lane). Same wrap-around semantics = bit-exact.
+static inline uint32x4_t neonInterpolate4(uint32x4_t s, uint32x4_t d, uint32x4_t a)
+{
+    auto m1 = vdupq_n_u32(0x00ff00ffu);
+    auto m2 = vdupq_n_u32(0xff00ff00u);
+    auto hi = vaddq_u32(vmulq_u32(vsubq_u32(vandq_u32(vshrq_n_u32(s, 8), m1), vandq_u32(vshrq_n_u32(d, 8), m1)), a), vandq_u32(d, m2));
+    auto lo = vaddq_u32(vshrq_n_u32(vmulq_u32(vsubq_u32(vandq_u32(s, m1), vandq_u32(d, m1)), a), 8), vandq_u32(d, m1));
+    return vaddq_u32(vandq_u32(hi, m2), vandq_u32(lo, m1));
+}
+#endif
+
+
 //dst[i] = INTERPOLATE(src[i], dst[i], a) — the scalar formula transcribed onto
 //uint32x4 lanes verbatim (same wrap-around integer semantics = bit-exact)
 static void neonInterpPixels32(uint32_t* dst, const uint32_t* src, int32_t len, uint8_t a)

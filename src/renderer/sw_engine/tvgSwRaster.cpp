@@ -984,6 +984,65 @@ static void _rasterScaledRow32(const SwImage& image, const Matrix* itransform, u
 }
 
 
+#if defined(THORVG_NEON_VECTOR_SUPPORT) && TVG_AARCH64
+//4-wide bilinear upscale row (fetch + SIMD blend). Bit-exact with the generic
+//path: vfmaq matches the compiler-fused scalar sx expression, the saturating
+//float->uint conversions match the scalar casts (negatives clamp to 0 on
+//AArch64 either way), and neonInterpolate4 transcribes INTERPOLATE verbatim.
+static void _neonScaledUpRow32(const SwImage& image, const Matrix* itransform, uint32_t* dst, int32_t x0, int32_t x1, float sy, uint8_t opacity)
+{
+    auto img = image.buf32;
+    auto stride = image.stride;
+    auto w = image.w;
+    auto h = image.h;
+    auto e11 = itransform->e11;
+    auto e13 = itransform->e13;
+
+    //row-constant vertical terms — identical expressions to _interpUpScaler
+    auto ry = (size_t)(sy);
+    auto ry2 = ry + 1;
+    if (ry2 >= h) ry2 = h - 1;
+    auto dy = (sy > 0.0f) ? static_cast<uint8_t>((sy - ry) * 255.0f) : 0;
+    auto row1 = img + ry * stride;
+    auto row2 = img + ry2 * stride;
+
+    uint32_t buf[SCALED_FETCH_CHUNK];
+    while (x0 < x1) {
+        auto cnt = std::min(x1 - x0, (int32_t)SCALED_FETCH_CHUNK);
+        int32_t i = 0;
+        for (; i + 4 <= cnt; i += 4) {
+            const int32_t xs[4] = {x0 + i, x0 + i + 1, x0 + i + 2, x0 + i + 3};
+            auto xf = vcvtq_f32_s32(vld1q_s32(xs));
+            auto sx = vsubq_f32(vfmaq_f32(vdupq_n_f32(e13), xf, vdupq_n_f32(e11)), vdupq_n_f32(0.49f));
+            auto rx = vcvtq_u32_f32(sx);
+            auto rx2 = vminq_u32(vaddq_u32(rx, vdupq_n_u32(1)), vdupq_n_u32(w - 1));
+            auto dx = vcvtq_u32_f32(vmulq_n_f32(vsubq_f32(sx, vcvtq_f32_u32(rx)), 255.0f));
+            uint32_t rxi[4], rx2i[4], c1[4], c2[4], c3[4], c4[4];
+            vst1q_u32(rxi, rx);
+            vst1q_u32(rx2i, rx2);
+            for (int k = 0; k < 4; ++k) {
+                c1[k] = row1[rxi[k]];
+                c2[k] = row1[rx2i[k]];
+                c3[k] = row2[rxi[k]];
+                c4[k] = row2[rx2i[k]];
+            }
+            auto lo = neonInterpolate4(vld1q_u32(c4), vld1q_u32(c3), dx);
+            auto hi = neonInterpolate4(vld1q_u32(c2), vld1q_u32(c1), dx);
+            vst1q_u32(buf + i, neonInterpolate4(lo, hi, vdupq_n_u32(dy)));
+        }
+        for (; i < cnt; ++i) {
+            auto sxs = (x0 + i) * e11 + e13 - 0.49f;
+            buf[i] = _interpUpScaler(img, stride, w, h, sxs, sy, 0, 0, 0);
+        }
+        if (opacity == 255) rasterPreNormalPixels32(dst, buf, cnt);
+        else rasterNormalPixels32(dst, buf, cnt, opacity);
+        dst += cnt;
+        x0 += cnt;
+    }
+}
+#endif
+
+
 static bool _rasterScaledImage(SwSurface* surface, const SwImage& image, const Matrix* itransform, const RenderRegion& bbox, uint8_t opacity)
 {
     auto scaleMethod = _scaleMethod(image);
@@ -998,6 +1057,12 @@ static bool _rasterScaledImage(SwSurface* surface, const SwImage& image, const M
             int32_t x0, x1;
             if (!_scaledRowRange(image, itransform, bbox.min.x, bbox.max.x, x0, x1)) continue;
             auto dst = buffer + (x0 - bbox.min.x);
+#if defined(THORVG_NEON_VECTOR_SUPPORT) && TVG_AARCH64
+            if (scaleMethod == _interpUpScaler) {
+                _neonScaledUpRow32(image, itransform, dst, x0, x1, sy, opacity);
+                continue;
+            }
+#endif
             if (scaleMethod == _interpNoScaler) _rasterScaledRow32<_interpNoScaler>(image, itransform, dst, x0, x1, sy, miny, maxy, sampleSize, opacity);
             else if (scaleMethod == _interpUpScaler) _rasterScaledRow32<_interpUpScaler>(image, itransform, dst, x0, x1, sy, miny, maxy, sampleSize, opacity);
             else _rasterScaledRow32<_interpDownScaler>(image, itransform, dst, x0, x1, sy, miny, maxy, sampleSize, opacity);
