@@ -773,6 +773,162 @@ void fillLinear(const SwFill* fill, uint32_t* dst, uint32_t y, uint32_t x, uint3
 }
 
 
+/************************************************************************/
+/* Specialized std-op fill path (fetch + span blend)                    */
+/*                                                                      */
+/* The generic fillLinear/fillRadial(SwBlenderA) variants pay an        */
+/* indirect call per pixel. For the standard non-composited operators   */
+/* the work is split into gradient fetch + span blend instead: the      */
+/* fetch isolates the expensive per-pixel math (radial sqrt vectorizes  */
+/* on SIMD) and the blend runs through the SIMD span primitives.        */
+/* Bit-exact with the generic path for the corresponding operators.     */
+/************************************************************************/
+
+#if defined(THORVG_NEON_VECTOR_SUPPORT) && (defined(__aarch64__) || defined(__ARM_64BIT_STATE) || defined(_M_ARM64))
+#define TVG_FILL_NEON_A64 1
+#include <arm_neon.h>
+#endif
+
+#define FILL_FETCH_CHUNK 256
+
+static inline void _blendStd(uint32_t* dst, const uint32_t* buf, uint32_t len, SwFillStdOp op, uint8_t a)
+{
+    switch (op) {
+        case SwFillPreNormal: rasterPreNormalPixels32(dst, buf, (int32_t)len); break;
+        case SwFillNormal: rasterNormalPixels32(dst, buf, (int32_t)len, a); break;
+        case SwFillInterp: rasterInterpPixels32(dst, buf, (int32_t)len, a); break;
+        default: break;   //SwFillSrcOver fetches directly into dst
+    }
+}
+
+
+//fetch n radial-gradient pixels, advancing the recurrence exactly like the scalar loop
+static void _fetchRadial(const SwFill* fill, uint32_t* out, uint32_t n, float& b, float deltaB, float& det, float& deltaDet, float deltaDeltaDet)
+{
+    uint32_t i = 0;
+#ifdef TVG_FILL_NEON_A64
+    //4-wide: the recurrence stays sequential-scalar (cheap adds) so the lane
+    //inputs are identical to the scalar path; the sqrt and scale+round
+    //vectorize. vsqrtq_f32 is IEEE correctly rounded = sqrtf; vfmaq matches
+    //the fused (pos * K + 0.5f) the compiler emits for the scalar
+    //expression; vcvtq_s32_f32 truncates toward zero = static_cast<int32_t>.
+    float dets[4], bs[4];
+    int32_t idx[4];
+    for (; i + 4 <= n; i += 4) {
+        for (int k = 0; k < 4; ++k) {
+            dets[k] = det;
+            bs[k] = b;
+            det += deltaDet;
+            deltaDet += deltaDeltaDet;
+            b += deltaB;
+        }
+        auto pos = vsubq_f32(vsqrtq_f32(vld1q_f32(dets)), vld1q_f32(bs));
+        auto fidx = vfmaq_f32(vdupq_n_f32(0.5f), pos, vdupq_n_f32((float)(SW_COLOR_TABLE - 1)));
+        vst1q_s32(idx, vcvtq_s32_f32(fidx));
+        out[i + 0] = fill->ctable[_clamp(fill, idx[0])];
+        out[i + 1] = fill->ctable[_clamp(fill, idx[1])];
+        out[i + 2] = fill->ctable[_clamp(fill, idx[2])];
+        out[i + 3] = fill->ctable[_clamp(fill, idx[3])];
+    }
+#endif
+    for (; i < n; ++i) {
+        out[i] = _pixel(fill, sqrtf(det) - b);
+        det += deltaDet;
+        deltaDet += deltaDeltaDet;
+        b += deltaB;
+    }
+}
+
+
+void fillRadialStd(const SwFill* fill, uint32_t* dst, uint32_t y, uint32_t x, uint32_t len, SwFillStdOp op, uint8_t a)
+{
+    //rare edge case: reuse the generic path
+    if (fill->radial.a < RADIAL_A_THRESHOLD) {
+        static constexpr SwBlenderA ops[] = {opBlendSrcOver, opBlendPreNormal, opBlendNormal, opBlendInterp};
+        fillRadial(fill, dst, y, x, len, ops[op], a);
+        return;
+    }
+
+    float b, deltaB, det, deltaDet, deltaDeltaDet;
+    _calculateCoefficients(fill, x, y, b, deltaB, det, deltaDet, deltaDeltaDet);
+
+    uint32_t buf[FILL_FETCH_CHUNK];
+    while (len > 0) {
+        auto n = len < FILL_FETCH_CHUNK ? len : FILL_FETCH_CHUNK;
+        auto out = (op == SwFillSrcOver) ? dst : buf;
+        _fetchRadial(fill, out, n, b, deltaB, det, deltaDet, deltaDeltaDet);
+        _blendStd(dst, buf, n, op, a);
+        dst += n;
+        len -= n;
+    }
+}
+
+
+static void _fetchLinearFixed(const SwFill* fill, uint32_t* out, uint32_t n, int32_t& t2, int32_t inc2)
+{
+    for (uint32_t i = 0; i < n; ++i) {
+        out[i] = _fixedPixel(fill, t2);
+        t2 += inc2;
+    }
+}
+
+
+static void _fetchLinearFloat(const SwFill* fill, uint32_t* out, uint32_t n, float& t, float inc)
+{
+    for (uint32_t i = 0; i < n; ++i) {
+        out[i] = _pixel(fill, t / SW_COLOR_TABLE);
+        t += inc;
+    }
+}
+
+
+void fillLinearStd(const SwFill* fill, uint32_t* dst, uint32_t y, uint32_t x, uint32_t len, SwFillStdOp op, uint8_t a)
+{
+    //Rotation
+    float rx = x + 0.5f;
+    float ry = y + 0.5f;
+    float t = (fill->linear.dx * rx + fill->linear.dy * ry + fill->linear.offset) * (SW_COLOR_TABLE - 1);
+    float inc = (fill->linear.dx) * (SW_COLOR_TABLE - 1);
+
+    //constant color for the whole span
+    if (tvg::zero(inc)) {
+        auto color = _fixedPixel(fill, static_cast<int32_t>(t * FIXPT_SIZE));
+        switch (op) {
+            case SwFillSrcOver: rasterPixel32(dst, color, 0, (int32_t)len); break;
+            case SwFillPreNormal: rasterBlendSpan32(dst, color, IA(color), (int32_t)len); break;
+            case SwFillNormal: {
+                auto tmp = ALPHA_BLEND(color, a);
+                rasterBlendSpan32(dst, tmp, IA(tmp), (int32_t)len);
+                break;
+            }
+            case SwFillInterp: {
+                for (uint32_t i = 0; i < len; ++i, ++dst) *dst = INTERPOLATE(color, *dst, a);
+                break;
+            }
+        }
+        return;
+    }
+
+    auto vMax = static_cast<float>(INT32_MAX >> (FIXPT_BITS + 1));
+    auto vMin = -vMax;
+    auto v = t + (inc * len);
+    auto fixed = (v < vMax && v > vMin);   //fixed point math is applicable
+    auto t2 = fixed ? static_cast<int32_t>(t * FIXPT_SIZE) : 0;
+    auto inc2 = fixed ? static_cast<int32_t>(inc * FIXPT_SIZE) : 0;
+
+    uint32_t buf[FILL_FETCH_CHUNK];
+    while (len > 0) {
+        auto n = len < FILL_FETCH_CHUNK ? len : FILL_FETCH_CHUNK;
+        auto out = (op == SwFillSrcOver) ? dst : buf;
+        if (fixed) _fetchLinearFixed(fill, out, n, t2, inc2);
+        else _fetchLinearFloat(fill, out, n, t, inc);
+        _blendStd(dst, buf, n, op, a);
+        dst += n;
+        len -= n;
+    }
+}
+
+
 bool fillGenColorTable(SwFill* fill, const Fill* fdata, const Matrix& transform, SwSurface* surface, uint8_t opacity, bool ctable)
 {
     if (!fill) return false;

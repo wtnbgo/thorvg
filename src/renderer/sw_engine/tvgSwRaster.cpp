@@ -57,6 +57,11 @@ struct FillLinear
         fillLinear(fill, dst, y, x, len, op, op2, a);
     }
 
+    void operator()(const SwFill* fill, uint32_t* dst, uint32_t y, uint32_t x, uint32_t len, SwFillStdOp op, uint8_t a)
+    {
+        fillLinearStd(fill, dst, y, x, len, op, a);
+    }
+
 };
 
 struct FillRadial
@@ -84,6 +89,11 @@ struct FillRadial
     void operator()(const SwFill* fill, uint32_t* dst, uint32_t y, uint32_t x, uint32_t len, SwBlenderA op, SwBlender op2, uint8_t a)
     {
         fillRadial(fill, dst, y, x, len, op, op2, a);
+    }
+
+    void operator()(const SwFill* fill, uint32_t* dst, uint32_t y, uint32_t x, uint32_t len, SwFillStdOp op, uint8_t a)
+    {
+        fillRadialStd(fill, dst, y, x, len, op, a);
     }
 };
 
@@ -1217,7 +1227,7 @@ static bool _rasterTranslucentGradientRect(SwSurface* surface, const RenderRegio
     if (surface->channelSize == sizeof(uint32_t)) {
         auto buffer = surface->buf32 + (bbox.min.y * surface->stride) + bbox.min.x;
         for (uint32_t y = 0; y < bbox.h(); ++y) {
-            fillMethod()(fill, buffer, bbox.min.y + y, bbox.min.x, bbox.w(), opBlendPreNormal, 255);
+            fillMethod()(fill, buffer, bbox.min.y + y, bbox.min.x, bbox.w(), SwFillPreNormal, 255);
             buffer += surface->stride;
         }
     //8 bits
@@ -1239,7 +1249,7 @@ static bool _rasterSolidGradientRect(SwSurface* surface, const RenderRegion& bbo
     if (surface->channelSize == sizeof(uint32_t)) {
         auto buffer = surface->buf32 + (bbox.min.y * surface->stride) + bbox.min.x;
         for (uint32_t y = 0; y < bbox.h(); ++y) {
-            fillMethod()(fill, buffer, bbox.min.y + y, bbox.min.x, bbox.w(), opBlendSrcOver, 255);
+            fillMethod()(fill, buffer, bbox.min.y + y, bbox.min.x, bbox.w(), SwFillSrcOver, 255);
             buffer += surface->stride;
         }
     //8 bits
@@ -1376,8 +1386,8 @@ static bool _rasterTranslucentGradientRle(SwSurface* surface, const SwRle* rle, 
     if (surface->channelSize == sizeof(uint32_t)) {
         for (uint32_t i = 0; i < rle->size(); ++i, ++span) {
             auto dst = &surface->buf32[span->y * surface->stride + span->x];
-            if (span->coverage == 255) fillMethod()(fill, dst, span->y, span->x, span->len, opBlendPreNormal, 255);
-            else fillMethod()(fill, dst, span->y, span->x, span->len, opBlendNormal, span->coverage);
+            if (span->coverage == 255) fillMethod()(fill, dst, span->y, span->x, span->len, SwFillPreNormal, 255);
+            else fillMethod()(fill, dst, span->y, span->x, span->len, SwFillNormal, span->coverage);
         }
     //8 bits
     } else if (surface->channelSize == sizeof(uint8_t)) {
@@ -1399,8 +1409,8 @@ static bool _rasterSolidGradientRle(SwSurface* surface, const SwRle* rle, const 
     if (surface->channelSize == sizeof(uint32_t)) {
         for (uint32_t i = 0; i < rle->size(); ++i, ++span) {
             auto dst = &surface->buf32[span->y * surface->stride + span->x];
-            if (span->coverage == 255) fillMethod()(fill, dst, span->y, span->x, span->len, opBlendSrcOver, 255);
-            else fillMethod()(fill, dst, span->y, span->x, span->len, opBlendInterp, span->coverage);
+            if (span->coverage == 255) fillMethod()(fill, dst, span->y, span->x, span->len, SwFillSrcOver, 255);
+            else fillMethod()(fill, dst, span->y, span->x, span->len, SwFillInterp, span->coverage);
         }
     //8 bits
     } else if (surface->channelSize == sizeof(uint8_t)) {
@@ -1451,8 +1461,51 @@ static bool _rasterRadialGradientRle(SwSurface* surface, const SwRle* rle, const
 
 void rasterTranslucentPixel32(uint32_t* dst, uint32_t* src, uint32_t len, uint8_t opacity)
 {
-    //TODO: Support SIMD accelerations
-    cRasterTranslucentPixels(dst, src, len, opacity);
+    if (opacity == 255) rasterPreNormalPixels32(dst, src, (int32_t)len);
+    else rasterNormalPixels32(dst, src, (int32_t)len, opacity);
+}
+
+
+void rasterPreNormalPixels32(uint32_t* dst, const uint32_t* src, int32_t len)
+{
+#if defined(THORVG_AVX_VECTOR_SUPPORT)
+    avxPreNormalPixels32(dst, src, len);
+#elif defined(THORVG_NEON_VECTOR_SUPPORT)
+    neonPreNormalPixels32(dst, src, len);
+#else
+    for (int32_t i = 0; i < len; ++i) {
+        dst[i] = src[i] + ALPHA_BLEND(dst[i], IA(src[i]));
+    }
+#endif
+}
+
+
+void rasterNormalPixels32(uint32_t* dst, const uint32_t* src, int32_t len, uint8_t a)
+{
+#if defined(THORVG_AVX_VECTOR_SUPPORT)
+    avxNormalPixels32(dst, src, len, a);
+#elif defined(THORVG_NEON_VECTOR_SUPPORT)
+    neonNormalPixels32(dst, src, len, a);
+#else
+    for (int32_t i = 0; i < len; ++i) {
+        auto tmp = ALPHA_BLEND(src[i], a);
+        dst[i] = tmp + ALPHA_BLEND(dst[i], IA(tmp));
+    }
+#endif
+}
+
+
+void rasterInterpPixels32(uint32_t* dst, const uint32_t* src, int32_t len, uint8_t a)
+{
+#if defined(THORVG_AVX_VECTOR_SUPPORT)
+    avxInterpPixels32(dst, src, len, a);
+#elif defined(THORVG_NEON_VECTOR_SUPPORT)
+    neonInterpPixels32(dst, src, len, a);
+#else
+    for (int32_t i = 0; i < len; ++i) {
+        dst[i] = INTERPOLATE(src[i], dst[i], a);
+    }
+#endif
 }
 
 

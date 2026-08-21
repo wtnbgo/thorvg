@@ -729,6 +729,20 @@ void fillRadial(const SwFill* fill, uint32_t* dst, uint32_t y, uint32_t x, uint3
 void fillRadial(const SwFill* fill, uint32_t* dst, uint32_t y, uint32_t x, uint32_t len, SwBlenderA op, SwBlender op2, uint8_t a);                         //blending + BlendingMethod(op2) ver.
 void fillRadial(const SwFill* fill, uint32_t* dst, uint32_t y, uint32_t x, uint32_t len, uint8_t* cmp, SwAlpha alpha, uint8_t csize, uint8_t opacity);     //matting ver.
 
+//Specialized (non-composited, non-custom-blend) gradient fill path.
+//Splits the work into gradient fetch + span blend so the per-pixel indirect
+//blender call disappears and both stages can use SIMD. Bit-exact with the
+//generic SwBlenderA versions above for the corresponding operators.
+enum SwFillStdOp : uint8_t
+{
+    SwFillSrcOver = 0,   //dst = src                      (opBlendSrcOver)
+    SwFillPreNormal,     //dst = src over dst             (opBlendPreNormal)
+    SwFillNormal,        //src x a, then over dst         (opBlendNormal)
+    SwFillInterp         //dst = lerp(src, dst, a)        (opBlendInterp)
+};
+void fillLinearStd(const SwFill* fill, uint32_t* dst, uint32_t y, uint32_t x, uint32_t len, SwFillStdOp op, uint8_t a);
+void fillRadialStd(const SwFill* fill, uint32_t* dst, uint32_t y, uint32_t x, uint32_t len, SwFillStdOp op, uint8_t a);
+
 SwRle* rleRender(SwRle* rle, const SwOutline* outline, const RenderRegion& bbox, SwMpool* mpool, unsigned tid, bool antiAlias);
 SwRle* rleRender(const RenderRegion* bbox);
 void rleFree(SwRle* rle);
@@ -756,6 +770,11 @@ bool rasterClear(SwSurface* surface, uint32_t x, uint32_t y, uint32_t w, uint32_
 void rasterPixel32(uint32_t *dst, uint32_t val, uint32_t offset, int32_t len);
 void rasterBlendSpan32(uint32_t* dst, uint32_t src, uint8_t ialpha, int32_t len);
 void rasterTranslucentPixel32(uint32_t* dst, uint32_t* src, uint32_t len, uint8_t opacity);
+//Per-pixel (varying src) blend primitives, SIMD accelerated. Bit-exact with
+//the corresponding opBlend* scalar operators applied per pixel.
+void rasterPreNormalPixels32(uint32_t* dst, const uint32_t* src, int32_t len);           //opBlendPreNormal
+void rasterNormalPixels32(uint32_t* dst, const uint32_t* src, int32_t len, uint8_t a);   //opBlendNormal
+void rasterInterpPixels32(uint32_t* dst, const uint32_t* src, int32_t len, uint8_t a);   //INTERPOLATE
 void rasterPixel32(uint32_t* dst, uint32_t* src, uint32_t len, uint8_t opacity);
 void rasterGrayscale8(uint8_t *dst, uint8_t val, uint32_t offset, int32_t len);
 void rasterXYFlip(uint32_t* src, uint32_t* dst, int32_t stride, int32_t w, int32_t h, const RenderRegion& bbox, bool flipped);

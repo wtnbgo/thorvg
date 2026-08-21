@@ -67,6 +67,65 @@ static void avxBlendSpan32(uint32_t* dst, uint32_t src, uint8_t ialpha, int32_t 
 }
 
 
+//per-pixel inverse alpha (255 - A) replicated to every byte lane
+static inline __m128i avxInverseAlpha(__m128i c)
+{
+    auto rep = _mm_mullo_epi32(_mm_srli_epi32(c, 24), _mm_set1_epi32(0x01010101));
+    return _mm_xor_si128(rep, _mm_set1_epi32(-1));
+}
+
+
+//dst[i] = src[i] + ALPHA_BLEND(dst[i], 255 - A(src[i])) — opBlendPreNormal per pixel
+static void avxPreNormalPixels32(uint32_t* dst, const uint32_t* src, int32_t len)
+{
+    int32_t i = 0;
+    for (; i + N_32BITS_IN_128REG <= len; i += N_32BITS_IN_128REG) {
+        auto s = _mm_loadu_si128((const __m128i*)(src + i));
+        auto d = _mm_loadu_si128((__m128i*)(dst + i));
+        d = _mm_add_epi32(s, ALPHA_BLEND(d, avxInverseAlpha(s)));
+        _mm_storeu_si128((__m128i*)(dst + i), d);
+    }
+    for (; i < len; ++i) dst[i] = src[i] + ALPHA_BLEND(dst[i], IA(src[i]));
+}
+
+
+//t = ALPHA_BLEND(src[i], a); dst[i] = t + ALPHA_BLEND(dst[i], IA(t)) — opBlendNormal per pixel
+static void avxNormalPixels32(uint32_t* dst, const uint32_t* src, int32_t len, uint8_t a)
+{
+    int32_t i = 0;
+    auto vA = _mm_set1_epi8((char)a);
+    for (; i + N_32BITS_IN_128REG <= len; i += N_32BITS_IN_128REG) {
+        auto t = ALPHA_BLEND(_mm_loadu_si128((const __m128i*)(src + i)), vA);
+        auto d = _mm_loadu_si128((__m128i*)(dst + i));
+        d = _mm_add_epi32(t, ALPHA_BLEND(d, avxInverseAlpha(t)));
+        _mm_storeu_si128((__m128i*)(dst + i), d);
+    }
+    for (; i < len; ++i) {
+        auto t = ALPHA_BLEND(src[i], a);
+        dst[i] = t + ALPHA_BLEND(dst[i], IA(t));
+    }
+}
+
+
+//dst[i] = INTERPOLATE(src[i], dst[i], a) — the scalar formula transcribed onto
+//32bit lanes verbatim (same wrap-around integer semantics = bit-exact)
+static void avxInterpPixels32(uint32_t* dst, const uint32_t* src, int32_t len, uint8_t a)
+{
+    int32_t i = 0;
+    auto m1 = _mm_set1_epi32(0x00ff00ff);
+    auto m2 = _mm_set1_epi32((int)0xff00ff00);
+    auto vA = _mm_set1_epi32(a);
+    for (; i + N_32BITS_IN_128REG <= len; i += N_32BITS_IN_128REG) {
+        auto s = _mm_loadu_si128((const __m128i*)(src + i));
+        auto d = _mm_loadu_si128((__m128i*)(dst + i));
+        auto hi = _mm_add_epi32(_mm_mullo_epi32(_mm_sub_epi32(_mm_and_si128(_mm_srli_epi32(s, 8), m1), _mm_and_si128(_mm_srli_epi32(d, 8), m1)), vA), _mm_and_si128(d, m2));
+        auto lo = _mm_add_epi32(_mm_srli_epi32(_mm_mullo_epi32(_mm_sub_epi32(_mm_and_si128(s, m1), _mm_and_si128(d, m1)), vA), 8), _mm_and_si128(d, m1));
+        _mm_storeu_si128((__m128i*)(dst + i), _mm_add_epi32(_mm_and_si128(hi, m2), _mm_and_si128(lo, m1)));
+    }
+    for (; i < len; ++i) dst[i] = INTERPOLATE(src[i], dst[i], a);
+}
+
+
 static void avxRasterGrayscale8(uint8_t* dst, uint8_t val, uint32_t offset, int32_t len)
 {
     dst += offset;

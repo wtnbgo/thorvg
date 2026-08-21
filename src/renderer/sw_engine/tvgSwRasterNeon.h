@@ -83,6 +83,78 @@ static void neonBlendSpan32(uint32_t* dst, uint32_t src, uint8_t ialpha, int32_t
 }
 
 
+//dst[i] = src[i] + ALPHA_BLEND(dst[i], 255 - A(src[i])) — opBlendPreNormal per pixel
+static void neonPreNormalPixels32(uint32_t* dst, const uint32_t* src, int32_t len)
+{
+    int32_t i = 0;
+#if TVG_AARCH64
+    for (; i + 4 <= len; i += 4) {
+        auto s = vreinterpretq_u8_u32(vld1q_u32(src + i));
+        auto d = vreinterpretq_u8_u32(vld1q_u32(dst + i));
+        //per-pixel inverse alpha, replicated to every byte lane
+        auto ia = vmvnq_u8(vreinterpretq_u8_u32(vmulq_n_u32(vshrq_n_u32(vreinterpretq_u32_u8(s), 24), 0x01010101u)));
+        vst1q_u32(dst + i, vreinterpretq_u32_u8(vaddq_u8(s, ALPHA_BLEND(d, ia))));
+    }
+#else
+    for (; i + 2 <= len; i += 2) {
+        auto s = vreinterpret_u8_u32(vld1_u32(src + i));
+        auto d = vreinterpret_u8_u32(vld1_u32(dst + i));
+        auto ia = vmvn_u8(vreinterpret_u8_u32(vmul_n_u32(vshr_n_u32(vreinterpret_u32_u8(s), 24), 0x01010101u)));
+        vst1_u32(dst + i, vreinterpret_u32_u8(vadd_u8(s, ALPHA_BLEND(d, ia))));
+    }
+#endif
+    for (; i < len; ++i) dst[i] = src[i] + ALPHA_BLEND(dst[i], IA(src[i]));
+}
+
+
+//t = ALPHA_BLEND(src[i], a); dst[i] = t + ALPHA_BLEND(dst[i], IA(t)) — opBlendNormal per pixel
+static void neonNormalPixels32(uint32_t* dst, const uint32_t* src, int32_t len, uint8_t a)
+{
+    int32_t i = 0;
+#if TVG_AARCH64
+    auto vA = vdupq_n_u8(a);
+    for (; i + 4 <= len; i += 4) {
+        auto t = ALPHA_BLEND(vreinterpretq_u8_u32(vld1q_u32(src + i)), vA);
+        auto d = vreinterpretq_u8_u32(vld1q_u32(dst + i));
+        auto ia = vmvnq_u8(vreinterpretq_u8_u32(vmulq_n_u32(vshrq_n_u32(vreinterpretq_u32_u8(t), 24), 0x01010101u)));
+        vst1q_u32(dst + i, vreinterpretq_u32_u8(vaddq_u8(t, ALPHA_BLEND(d, ia))));
+    }
+#else
+    auto vA2 = vdup_n_u8(a);
+    for (; i + 2 <= len; i += 2) {
+        auto t = ALPHA_BLEND(vreinterpret_u8_u32(vld1_u32(src + i)), vA2);
+        auto d = vreinterpret_u8_u32(vld1_u32(dst + i));
+        auto ia = vmvn_u8(vreinterpret_u8_u32(vmul_n_u32(vshr_n_u32(vreinterpret_u32_u8(t), 24), 0x01010101u)));
+        vst1_u32(dst + i, vreinterpret_u32_u8(vadd_u8(t, ALPHA_BLEND(d, ia))));
+    }
+#endif
+    for (; i < len; ++i) {
+        auto t = ALPHA_BLEND(src[i], a);
+        dst[i] = t + ALPHA_BLEND(dst[i], IA(t));
+    }
+}
+
+
+//dst[i] = INTERPOLATE(src[i], dst[i], a) — the scalar formula transcribed onto
+//uint32x4 lanes verbatim (same wrap-around integer semantics = bit-exact)
+static void neonInterpPixels32(uint32_t* dst, const uint32_t* src, int32_t len, uint8_t a)
+{
+    int32_t i = 0;
+#if TVG_AARCH64
+    auto m1 = vdupq_n_u32(0x00ff00ffu);
+    auto m2 = vdupq_n_u32(0xff00ff00u);
+    for (; i + 4 <= len; i += 4) {
+        auto s = vld1q_u32(src + i);
+        auto d = vld1q_u32(dst + i);
+        auto hi = vaddq_u32(vmulq_n_u32(vsubq_u32(vandq_u32(vshrq_n_u32(s, 8), m1), vandq_u32(vshrq_n_u32(d, 8), m1)), a), vandq_u32(d, m2));
+        auto lo = vaddq_u32(vshrq_n_u32(vmulq_n_u32(vsubq_u32(vandq_u32(s, m1), vandq_u32(d, m1)), a), 8), vandq_u32(d, m1));
+        vst1q_u32(dst + i, vaddq_u32(vandq_u32(hi, m2), vandq_u32(lo, m1)));
+    }
+#endif
+    for (; i < len; ++i) dst[i] = INTERPOLATE(src[i], dst[i], a);
+}
+
+
 static void neonRasterGrayscale8(uint8_t* dst, uint8_t val, uint32_t offset, int32_t len)
 {
     dst += offset;
