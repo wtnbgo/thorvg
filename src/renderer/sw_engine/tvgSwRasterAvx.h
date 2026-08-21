@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 - 2026 ThorVG project. All rights reserved.
 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -27,44 +27,49 @@
 #define N_32BITS_IN_128REG 4
 #define N_32BITS_IN_256REG 8
 
+//per byte: (c * (a + 1)) >> 8 — bit-exact with the scalar ALPHA_BLEND().
+//@p a must carry the alpha value replicated in every byte lane.
 static inline __m128i ALPHA_BLEND(__m128i c, __m128i a)
 {
-    //1. set the masks for the A/G and R/B channels
     auto AG = _mm_set1_epi32(0xff00ff00);
     auto RB = _mm_set1_epi32(0x00ff00ff);
 
-    //2. mask the alpha vector - originally quartet [a, a, a, a]
-    auto aAG = _mm_and_si128(a, AG);
+    //alpha at the low byte of each 16bit lane
     auto aRB = _mm_and_si128(a, RB);
+    //R/B (and A/G shifted down) channel bytes at the low byte of each 16bit lane
+    auto cRB = _mm_and_si128(c, RB);
+    auto cAG = _mm_and_si128(_mm_srli_epi16(c, 8), RB);
 
-    //3. calculate the alpha blending of the 2nd and 4th channel
-    //- mask the color vector
-    //- multiply it by the masked alpha vector
-    //- add the correction to compensate bit shifting used instead of dividing by 255
-    //- shift bits - corresponding to division by 256
-    auto even = _mm_and_si128(c, RB);
-    even = _mm_mullo_epi16(even, aRB);
-    even =_mm_add_epi16(even, RB);
-    even = _mm_srli_epi16(even, 8);
+    //c * a + c == c * (a + 1); max 0xff00 per lane, no overflow
+    auto even = _mm_srli_epi16(_mm_add_epi16(_mm_mullo_epi16(cRB, aRB), cRB), 8);
+    auto odd = _mm_and_si128(_mm_add_epi16(_mm_mullo_epi16(cAG, aRB), cAG), AG);
 
-    //4. calculate the alpha blending of the 1st and 3rd channel:
-    //- mask the color vector
-    //- multiply it by the corresponding masked alpha vector and store the high bits of the result
-    //- add the correction to compensate division by 256 instead of by 255 (next step)
-    //- remove the low 8 bits to mimic the division by 256
-    auto odd = _mm_and_si128(c, AG);
-    odd = _mm_mulhi_epu16(odd, aAG);
-    odd = _mm_add_epi16(odd, RB);
-    odd = _mm_and_si128(odd, AG);
-
-    //5. the final result
-    return _mm_or_si128(odd, even);
+    return _mm_or_si128(even, odd);
 }
 
 
-static void avxRasterGrayscale8(uint8_t* dst, uint8_t val, uint32_t offset, int32_t len) 
+//dst[i] = src + ALPHA_BLEND(dst[i], ialpha) — the common span blend of the
+//solid (partial coverage) and translucent fill paths. Bit-exact with the
+//scalar loop.
+static void avxBlendSpan32(uint32_t* dst, uint32_t src, uint8_t ialpha, int32_t len)
 {
-    dst += offset; 
+    int32_t i = 0;
+    if (len >= N_32BITS_IN_128REG) {
+        auto avxSrc = _mm_set1_epi32(src);
+        auto avxIalpha = _mm_set1_epi8(ialpha);
+        for (; i + N_32BITS_IN_128REG <= len; i += N_32BITS_IN_128REG) {
+            auto d = _mm_loadu_si128((__m128i*)(dst + i));
+            d = _mm_add_epi32(avxSrc, ALPHA_BLEND(d, avxIalpha));
+            _mm_storeu_si128((__m128i*)(dst + i), d);
+        }
+    }
+    for (; i < len; ++i) dst[i] = src + ALPHA_BLEND(dst[i], ialpha);
+}
+
+
+static void avxRasterGrayscale8(uint8_t* dst, uint8_t val, uint32_t offset, int32_t len)
+{
+    dst += offset;
 
     __m256i vecVal = _mm256_set1_epi8(val);
 
@@ -108,39 +113,10 @@ static bool avxRasterTranslucentRect(SwSurface* surface, const RenderRegion& bbo
     if (surface->channelSize == sizeof(uint32_t)) {
         auto color = surface->join(c.r, c.g, c.b, c.a);
         auto buffer = surface->buf32 + (bbox.min.y * surface->stride) + bbox.min.x;
-
-        uint32_t ialpha = 255 - c.a;
-
-        auto avxColor = _mm_set1_epi32(color);
-        auto avxIalpha = _mm_set1_epi8(ialpha);
+        auto ialpha = 255 - c.a;
 
         for (uint32_t y = 0; y < h; ++y) {
-            auto dst = &buffer[y * surface->stride];
-
-            //1. fill the not aligned memory (for 128-bit registers a 16-bytes alignment is required)
-            auto notAligned = ((uintptr_t)dst & 0xf) / 4;
-            if (notAligned) {
-                notAligned = (N_32BITS_IN_128REG - notAligned > w ? w : N_32BITS_IN_128REG - notAligned);
-                for (uint32_t x = 0; x < notAligned; ++x, ++dst) {
-                    *dst = color + ALPHA_BLEND(*dst, ialpha);
-                }
-            }
-
-            //2. fill the aligned memory - N_32BITS_IN_128REG pixels processed at once
-            uint32_t iterations = (w - notAligned) / N_32BITS_IN_128REG;
-            uint32_t avxFilled = iterations * N_32BITS_IN_128REG;
-            auto avxDst = (__m128i*)dst;
-            for (uint32_t x = 0; x < iterations; ++x, ++avxDst) {
-                *avxDst = _mm_add_epi32(avxColor, ALPHA_BLEND(*avxDst, avxIalpha));
-            }
-
-            //3. fill the remaining pixels
-            int32_t leftovers = w - notAligned - avxFilled;
-            dst += avxFilled;
-            while (leftovers--) {
-                *dst = color + ALPHA_BLEND(*dst, ialpha);
-                dst++;
-            }
+            avxBlendSpan32(&buffer[y * surface->stride], color, ialpha, w);
         }
     //8bit grayscale
     } else if (surface->channelSize == sizeof(uint8_t)) {
@@ -172,41 +148,7 @@ static bool avxRasterTranslucentRle(SwSurface* surface, const SwRle* rle, const 
             if (!span->fetch(bbox, x, len)) continue;
             if (span->coverage < 255) src = ALPHA_BLEND(color, span->coverage);
             else src = color;
-
-            auto dst = &surface->buf32[span->y * surface->stride + x];
-            auto ialpha = IA(src);
-
-            //1. fill the not aligned memory (for 128-bit registers a 16-bytes alignment is required)
-            int32_t notAligned = ((uintptr_t)dst & 0xf) / 4;
-            if (notAligned) {
-                notAligned = (N_32BITS_IN_128REG - notAligned > len ? len : N_32BITS_IN_128REG - notAligned);
-                for (auto x = 0; x < notAligned; ++x, ++dst) {
-                    *dst = src + ALPHA_BLEND(*dst, ialpha);
-                }
-            }
-
-            //2. fill the aligned memory using avx - N_32BITS_IN_128REG pixels processed at once
-            //In order to avoid unnecessary avx variables declarations a check is made whether there are any iterations at all
-            int32_t iterations = (len - notAligned) / N_32BITS_IN_128REG;
-            int32_t avxFilled = 0;
-            if (iterations > 0) {
-                auto avxSrc = _mm_set1_epi32(src);
-                auto avxIalpha = _mm_set1_epi8(ialpha);
-
-                avxFilled = iterations * N_32BITS_IN_128REG;
-                auto avxDst = (__m128i*)dst;
-                for (auto x = 0; x < iterations; ++x, ++avxDst) {
-                    *avxDst = _mm_add_epi32(avxSrc, ALPHA_BLEND(*avxDst, avxIalpha));
-                }
-            }
-
-            //3. fill the remaining pixels
-            auto leftovers = len - notAligned - avxFilled;
-            dst += avxFilled;
-            while (leftovers--) {
-                *dst = src + ALPHA_BLEND(*dst, ialpha);
-                dst++;
-            }
+            avxBlendSpan32(&surface->buf32[span->y * surface->stride + x], src, IA(src), len);
         }
     //8bit grayscale
     } else if (surface->channelSize == sizeof(uint8_t)) {

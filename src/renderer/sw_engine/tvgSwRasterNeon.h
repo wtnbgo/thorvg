@@ -24,19 +24,62 @@
 
 #include <arm_neon.h>
 
-//TODO : need to support windows ARM
- 
-#if defined(__ARM_64BIT_STATE) || defined(_M_ARM64)
+#if defined(__aarch64__) || defined(__ARM_64BIT_STATE) || defined(_M_ARM64)
 #define TVG_AARCH64 1
 #else
 #define TVG_AARCH64 0
 #endif
 
 
+//per byte: (c * (a + 1)) >> 8 — bit-exact with the scalar ALPHA_BLEND()
 static inline uint8x8_t ALPHA_BLEND(uint8x8_t c, uint8x8_t a)
 {
-    uint16x8_t t = vmull_u8(c, a);
+    auto t = vmull_u8(c, a);
+    t = vaddw_u8(t, c);
     return vshrn_n_u16(t, 8);
+}
+
+
+#if TVG_AARCH64
+static inline uint8x16_t ALPHA_BLEND(uint8x16_t c, uint8x16_t a)
+{
+    auto lo = vmull_u8(vget_low_u8(c), vget_low_u8(a));
+    auto hi = vmull_high_u8(c, a);
+    lo = vaddw_u8(lo, vget_low_u8(c));
+    hi = vaddw_high_u8(hi, c);
+    return vshrn_high_n_u16(vshrn_n_u16(lo, 8), hi, 8);
+}
+#endif
+
+
+//dst[i] = src + ALPHA_BLEND(dst[i], ialpha) — the common span blend of the
+//solid (partial coverage) and translucent fill paths. Bit-exact with the
+//scalar loop. Per-byte add never carries for valid premultiplied input
+//(src ≤ src_alpha per channel), matching the other SIMD variants.
+static void neonBlendSpan32(uint32_t* dst, uint32_t src, uint8_t ialpha, int32_t len)
+{
+    int32_t i = 0;
+#if TVG_AARCH64
+    if (len >= 4) {
+        auto vSrc4 = vreinterpretq_u8_u32(vdupq_n_u32(src));
+        auto vIalpha4 = vdupq_n_u8(ialpha);
+        for (; i + 4 <= len; i += 4) {
+            auto d = vreinterpretq_u8_u32(vld1q_u32(dst + i));
+            d = vaddq_u8(vSrc4, ALPHA_BLEND(d, vIalpha4));
+            vst1q_u32(dst + i, vreinterpretq_u32_u8(d));
+        }
+    }
+#endif
+    if (i + 2 <= len) {
+        auto vSrc2 = vreinterpret_u8_u32(vdup_n_u32(src));
+        auto vIalpha2 = vdup_n_u8(ialpha);
+        for (; i + 2 <= len; i += 2) {
+            auto d = vreinterpret_u8_u32(vld1_u32(dst + i));
+            d = vadd_u8(vSrc2, ALPHA_BLEND(d, vIalpha2));
+            vst1_u32(dst + i, vreinterpret_u32_u8(d));
+        }
+    }
+    for (; i < len; ++i) dst[i] = src + ALPHA_BLEND(dst[i], ialpha);
 }
 
 
@@ -98,35 +141,12 @@ static bool neonRasterTranslucentRle(SwSurface* surface, const SwRle* rle, const
     if (surface->channelSize == sizeof(uint32_t)) {
         auto color = surface->join(c.r, c.g, c.b, c.a);
         uint32_t src;
-        uint8x8_t *vDst = nullptr;
-        int32_t align;
 
         for (auto span = rle->fetch(bbox, &end); span < end; ++span) {
             if (!span->fetch(bbox, x, len)) continue;
             if (span->coverage < 255) src = ALPHA_BLEND(color, span->coverage);
             else src = color;
-
-            auto dst = &surface->buf32[span->y * surface->stride + x];
-            auto ialpha = IA(src);
-
-            if ((((uintptr_t) dst) & 0x7) != 0) {
-                //fill not aligned byte
-                *dst = src + ALPHA_BLEND(*dst, ialpha);
-                vDst = (uint8x8_t*)(dst + 1);
-                align = 1;
-            } else {
-                vDst = (uint8x8_t*) dst;
-                align = 0;
-            }
-
-            uint8x8_t vSrc = (uint8x8_t) vdup_n_u32(src);
-            uint8x8_t vIalpha = vdup_n_u8((uint8_t) ialpha);
-
-            for (int32_t x = 0; x < (len - align) / 2; ++x)
-                vDst[x] = vadd_u8(vSrc, ALPHA_BLEND(vDst[x], vIalpha));
-
-            auto leftovers = (len - align) % 2;
-            if (leftovers > 0) dst[len - 1] = src + ALPHA_BLEND(dst[len - 1], ialpha);
+            neonBlendSpan32(&surface->buf32[span->y * surface->stride + x], src, IA(src), len);
         }
     //8bit grayscale
     } else if (surface->channelSize == sizeof(uint8_t)) {
@@ -158,30 +178,8 @@ static bool neonRasterTranslucentRect(SwSurface* surface, const RenderRegion& bb
         auto buffer = surface->buf32 + (bbox.min.y * surface->stride) + bbox.min.x;
         auto ialpha = 255 - c.a;
 
-        auto vColor = vdup_n_u32(color);
-        auto vIalpha = vdup_n_u8((uint8_t) ialpha);
-
-        uint8x8_t* vDst = nullptr;
-        uint32_t align;
-
         for (uint32_t y = 0; y < h; ++y) {
-            auto dst = &buffer[y * surface->stride];
-
-            if ((((uintptr_t) dst) & 0x7) != 0) {
-                //fill not aligned byte
-                *dst = color + ALPHA_BLEND(*dst, ialpha);
-                vDst = (uint8x8_t*) (dst + 1);
-                align = 1;
-            } else {
-                vDst = (uint8x8_t*) dst;
-                align = 0;
-            }
-
-            for (uint32_t x = 0; x <  (w - align) / 2; ++x)
-                vDst[x] = vadd_u8((uint8x8_t)vColor, ALPHA_BLEND(vDst[x], vIalpha));
-
-            auto leftovers = (w - align) % 2;
-            if (leftovers > 0) dst[w - 1] = color + ALPHA_BLEND(dst[w - 1], ialpha);
+            neonBlendSpan32(&buffer[y * surface->stride], color, ialpha, w);
         }
     //8bit grayscale
     } else if (surface->channelSize == sizeof(uint8_t)) {

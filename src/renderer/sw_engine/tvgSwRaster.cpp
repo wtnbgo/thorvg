@@ -640,12 +640,9 @@ static bool _rasterSolidRle(SwSurface* surface, const SwRle* rle, const RenderRe
             if (!span->fetch(bbox, x, len)) continue;
             if (span->coverage == 255) rasterPixel32(surface->buf32 + span->y * surface->stride, color, x, len);
             else {
-                auto dst = &surface->buf32[span->y * surface->stride + x];
+                //AA edge spans — SIMD accelerated via the shared span blend
                 auto src = ALPHA_BLEND(color, span->coverage);
-                auto ialpha = 255 - span->coverage;
-                for (auto x = 0; x < len; ++x, ++dst) {
-                    *dst = src + ALPHA_BLEND(*dst, ialpha);
-                }
+                rasterBlendSpan32(&surface->buf32[span->y * surface->stride + x], src, 255 - span->coverage, len);
             }
         }
     //8bit grayscale
@@ -1486,6 +1483,20 @@ void rasterPixel32(uint32_t *dst, uint32_t val, uint32_t offset, int32_t len)
     neonRasterPixel32(dst, val, offset, len);
 #else
     cRasterPixels(dst, val, offset, len);
+#endif
+}
+
+
+void rasterBlendSpan32(uint32_t* dst, uint32_t src, uint8_t ialpha, int32_t len)
+{
+#if defined(THORVG_AVX_VECTOR_SUPPORT)
+    avxBlendSpan32(dst, src, ialpha, len);
+#elif defined(THORVG_NEON_VECTOR_SUPPORT)
+    neonBlendSpan32(dst, src, ialpha, len);
+#else
+    for (int32_t i = 0; i < len; ++i, ++dst) {
+        *dst = src + ALPHA_BLEND(*dst, ialpha);
+    }
 #endif
 }
 

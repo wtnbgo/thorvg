@@ -754,6 +754,7 @@ bool rasterGradientShape(SwSurface* surface, SwShape* shape, const RenderRegion&
 bool rasterGradientStroke(SwSurface* surface, SwShape* shape, const RenderRegion& bbox, const Fill* fdata, uint8_t opacity);
 bool rasterClear(SwSurface* surface, uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 void rasterPixel32(uint32_t *dst, uint32_t val, uint32_t offset, int32_t len);
+void rasterBlendSpan32(uint32_t* dst, uint32_t src, uint8_t ialpha, int32_t len);
 void rasterTranslucentPixel32(uint32_t* dst, uint32_t* src, uint32_t len, uint8_t opacity);
 void rasterPixel32(uint32_t* dst, uint32_t* src, uint32_t len, uint8_t opacity);
 void rasterGrayscale8(uint8_t *dst, uint8_t val, uint32_t offset, int32_t len);
