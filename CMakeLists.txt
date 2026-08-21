@@ -141,11 +141,12 @@ endif()
 
 # SIMD support detection
 # CMAKE_SYSTEM_PROCESSOR is case-sensitive and platform dependent:
-# "AMD64" (Windows), "x86_64" (Linux), "ARM64" (Windows ARM64 / MSVC),
-# "aarch64" (Linux/NX), "arm64" (macOS). Compare lowercased.
+# "AMD64" (Windows), "x86_64" (Linux), "x64" (some cross toolchains),
+# "ARM64" (Windows ARM64 / MSVC), "aarch64" (Linux etc.), "arm64" (macOS).
+# Compare lowercased.
 string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" TVG_SYSTEM_PROCESSOR_LC)
 if(TVG_SIMD)
-    if(TVG_SYSTEM_PROCESSOR_LC MATCHES "x86_64|amd64|i686")
+    if(TVG_SYSTEM_PROCESSOR_LC MATCHES "x86_64|amd64|^x64$|i686")
         set(THORVG_AVX_VECTOR_SUPPORT 1)
     elseif(TVG_SYSTEM_PROCESSOR_LC MATCHES "arm|aarch64")
         set(THORVG_NEON_VECTOR_SUPPORT 1)
@@ -211,7 +212,7 @@ endif()
 
 # SIMD support
 if(TVG_SIMD)
-    if(TVG_SYSTEM_PROCESSOR_LC MATCHES "x86_64|amd64|i686")
+    if(TVG_SYSTEM_PROCESSOR_LC MATCHES "x86_64|amd64|^x64$|i686")
         if(MSVC)
             list(APPEND THORVG_PRIVATE_COMPILE_FLAGS /arch:AVX)
         else()
