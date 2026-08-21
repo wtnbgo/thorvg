@@ -945,6 +945,45 @@ static bool _rasterScaledBlendingImage(SwSurface* surface, const SwImage& image,
 }
 
 
+//x range with valid samples for one row — same per-pixel predicate as
+//SCALED_IMAGE_RANGE_X; validity is contiguous since sx is affine in x
+static bool _scaledRowRange(const SwImage& image, const Matrix* itransform, int32_t xmin, int32_t xmax, int32_t& x0, int32_t& x1)
+{
+    auto valid = [&](int32_t x) {
+        auto sx = x * itransform->e11 + itransform->e13 - 0.49f;
+        return !(sx <= -0.5f || (uint32_t)(sx + 0.5f) >= image.w);
+    };
+    x0 = xmin;
+    while (x0 < xmax && !valid(x0)) ++x0;
+    x1 = xmax;
+    while (x1 > x0 && !valid(x1 - 1)) --x1;
+    return x0 < x1;
+}
+
+
+#define SCALED_FETCH_CHUNK 256
+
+//fetch a row of scaled samples and blend via the SIMD span primitives.
+//The sampler is a template argument so the call inlines (the generic loop
+//paid an indirect call per pixel).
+template<uint32_t (*Sampler)(const uint32_t*, uint32_t, uint32_t, uint32_t, float, float, int32_t, int32_t, int32_t)>
+static void _rasterScaledRow32(const SwImage& image, const Matrix* itransform, uint32_t* dst, int32_t x0, int32_t x1, float sy, int32_t miny, int32_t maxy, int32_t n, uint8_t opacity)
+{
+    uint32_t buf[SCALED_FETCH_CHUNK];
+    while (x0 < x1) {
+        auto cnt = std::min(x1 - x0, (int32_t)SCALED_FETCH_CHUNK);
+        for (int32_t i = 0; i < cnt; ++i) {
+            auto sx = (x0 + i) * itransform->e11 + itransform->e13 - 0.49f;
+            buf[i] = Sampler(image.buf32, image.stride, image.w, image.h, sx, sy, miny, maxy, n);
+        }
+        if (opacity == 255) rasterPreNormalPixels32(dst, buf, cnt);
+        else rasterNormalPixels32(dst, buf, cnt, opacity);
+        dst += cnt;
+        x0 += cnt;
+    }
+}
+
+
 static bool _rasterScaledImage(SwSurface* surface, const SwImage& image, const Matrix* itransform, const RenderRegion& bbox, uint8_t opacity)
 {
     auto scaleMethod = _scaleMethod(image);
@@ -956,13 +995,12 @@ static bool _rasterScaledImage(SwSurface* surface, const SwImage& image, const M
         auto buffer = surface->buf32 + (bbox.min.y * surface->stride + bbox.min.x);
         for (auto y = bbox.min.y; y < bbox.max.y; ++y, buffer += surface->stride) {
             SCALED_IMAGE_RANGE_Y(y)
-            auto dst = buffer;
-            for (auto x = bbox.min.x; x < bbox.max.x; ++x, ++dst) {
-                SCALED_IMAGE_RANGE_X
-                auto src = scaleMethod(image.buf32, image.stride, image.w, image.h, sx, sy, miny, maxy, sampleSize);
-                if (opacity < 255) src = ALPHA_BLEND(src, opacity);
-                *dst = src + ALPHA_BLEND(*dst, IA(src));
-            }
+            int32_t x0, x1;
+            if (!_scaledRowRange(image, itransform, bbox.min.x, bbox.max.x, x0, x1)) continue;
+            auto dst = buffer + (x0 - bbox.min.x);
+            if (scaleMethod == _interpNoScaler) _rasterScaledRow32<_interpNoScaler>(image, itransform, dst, x0, x1, sy, miny, maxy, sampleSize, opacity);
+            else if (scaleMethod == _interpUpScaler) _rasterScaledRow32<_interpUpScaler>(image, itransform, dst, x0, x1, sy, miny, maxy, sampleSize, opacity);
+            else _rasterScaledRow32<_interpDownScaler>(image, itransform, dst, x0, x1, sy, miny, maxy, sampleSize, opacity);
         }
     } else if (surface->channelSize == sizeof(uint8_t)) {
         auto buffer = surface->buf8 + (bbox.min.y * surface->stride + bbox.min.x);

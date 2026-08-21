@@ -243,6 +243,22 @@ void scene_image_transform(tvg::Canvas* cv)
     cv->add(p);
 }
 
+void scene_image_scaled(tvg::Canvas* cv)
+{
+    // axis-aligned scaling (no rotation) — the common UI path (rasterScaledImage)
+    auto p = tvg::Picture::gen();
+    p->load(img_data, IMG, IMG, tvg::ColorSpace::ARGB8888, true);
+    p->translate(20, 20);
+    p->scale(2.6f);
+    cv->add(p);
+    auto p2 = tvg::Picture::gen();
+    p2->load(img_data, IMG, IMG, tvg::ColorSpace::ARGB8888, true);
+    p2->translate(190, 90);
+    p2->scale(1.3f);
+    p2->opacity(160);
+    cv->add(p2);
+}
+
 void scene_scene_opacity(tvg::Canvas* cv)
 {
     auto sc = tvg::Scene::gen();
@@ -286,6 +302,7 @@ const SceneDef scenes[] = {
     {"grad_linear",     scene_grad_linear},
     {"grad_radial",     scene_grad_radial},
     {"image_blit",      scene_image_blit},
+    {"image_scaled",    scene_image_scaled},
     {"image_transform", scene_image_transform},
     {"scene_opacity",   scene_scene_opacity},
     {"clip",            scene_clip},
