@@ -139,10 +139,14 @@ if(TVG_SAVER_GIF OR TVG_TOOL_LOTTIE2GIF)
 endif()
 
 # SIMD support detection
+# CMAKE_SYSTEM_PROCESSOR is case-sensitive and platform dependent:
+# "AMD64" (Windows), "x86_64" (Linux), "ARM64" (Windows ARM64 / MSVC),
+# "aarch64" (Linux/NX), "arm64" (macOS). Compare lowercased.
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" TVG_SYSTEM_PROCESSOR_LC)
 if(TVG_SIMD)
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i686")
+    if(TVG_SYSTEM_PROCESSOR_LC MATCHES "x86_64|amd64|i686")
         set(THORVG_AVX_VECTOR_SUPPORT 1)
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64")
+    elseif(TVG_SYSTEM_PROCESSOR_LC MATCHES "arm|aarch64")
         set(THORVG_NEON_VECTOR_SUPPORT 1)
     endif()
 endif()
@@ -206,17 +210,17 @@ endif()
 
 # SIMD support
 if(TVG_SIMD)
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i686")
+    if(TVG_SYSTEM_PROCESSOR_LC MATCHES "x86_64|amd64|i686")
         if(MSVC)
             list(APPEND THORVG_PRIVATE_COMPILE_FLAGS /arch:AVX)
         else()
             list(APPEND THORVG_PRIVATE_COMPILE_FLAGS -mavx)
         endif()
-    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64")
-        if(NOT MSVC)
-            if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm")
-                list(APPEND THORVG_PRIVATE_COMPILE_FLAGS -mfpu=neon)
-            endif()
+    elseif(TVG_SYSTEM_PROCESSOR_LC MATCHES "arm|aarch64")
+        # AArch64 (aarch64/arm64) has mandatory NEON — no extra flag needed.
+        # 32bit ARM needs -mfpu=neon on GCC/Clang.
+        if(NOT MSVC AND TVG_SYSTEM_PROCESSOR_LC MATCHES "^arm(v[0-9]|$|hf|el)")
+            list(APPEND THORVG_PRIVATE_COMPILE_FLAGS -mfpu=neon)
         endif()
     endif()
 endif()
