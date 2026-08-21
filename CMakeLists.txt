@@ -57,6 +57,7 @@ option(TVG_BINDINGS_CAPI "Enable C API bindings" OFF)
 # Tool options
 option(TVG_TOOL_SVG2PNG "Build svg2png tool" OFF)
 option(TVG_TOOL_LOTTIE2GIF "Build lottie2gif tool" OFF)
+option(TVG_TOOL_RASTER_TEST "Build raster golden-compare tool (SIMD verification)" OFF)
 
 # Extra options
 option(TVG_LOTTIE_EXPRESSIONS "Enable Lottie Expressions support" ON)
@@ -965,6 +966,21 @@ if(TVG_TOOL_SVG2PNG)
     install(TARGETS tvg-svg2png
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
+endif()
+
+if(TVG_TOOL_RASTER_TEST)
+    add_executable(tvg-raster-test
+        tools/raster-test/raster-test.cpp
+    )
+    target_include_directories(tvg-raster-test PRIVATE
+        ${THORVG_INCLUDE_DIRS}
+    )
+    target_link_libraries(tvg-raster-test PRIVATE thorvg)
+    target_compile_options(tvg-raster-test PRIVATE ${THORVG_COMPILE_FLAGS})
+
+    if(NOT TVG_BUILD_SHARED)
+        target_compile_definitions(tvg-raster-test PRIVATE TVG_STATIC)
+    endif()
 endif()
 
 if(TVG_LOADER_FT)
