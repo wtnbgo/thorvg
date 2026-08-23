@@ -177,13 +177,22 @@ static tvg::LoadModule* _findByPath(const char* filename)
     auto ext = fileext(filename);
     if (!ext) return nullptr;
 
-    if (!strcmp(ext, "svg")) return _find(FileType::Svg);
-    if (!strcmp(ext, "lot") || !strcmp(ext, "json")) return _find(FileType::Lot);
-    if (!strcmp(ext, "png")) return _find(FileType::Png);
-    if (!strcmp(ext, "jpg")) return _find(FileType::Jpg);
-    if (!strcmp(ext, "webp")) return _find(FileType::Webp);
-    if (!strcmp(ext, "ttf") || !strcmp(ext, "ttc")) return _find(FileType::Ttf);
-    if (!strcmp(ext, "otf") || !strcmp(ext, "otc")) return _find(FileType::Ttf);
+    //a variable-font instance suffix ("x.ttf#wght=700") sits inside the
+    //extension part — compare only up to the '#' so suffixed font keys still
+    //route to the font loader.
+    auto suffix = strchr(ext, '#');
+    auto extlen = suffix ? (size_t)(suffix - ext) : strlen(ext);
+    auto matches = [&](const char* s) {
+        return strlen(s) == extlen && !strncmp(ext, s, extlen);
+    };
+
+    if (matches("svg")) return _find(FileType::Svg);
+    if (matches("lot") || matches("json")) return _find(FileType::Lot);
+    if (matches("png")) return _find(FileType::Png);
+    if (matches("jpg")) return _find(FileType::Jpg);
+    if (matches("webp")) return _find(FileType::Webp);
+    if (matches("ttf") || matches("ttc")) return _find(FileType::Ttf);
+    if (matches("otf") || matches("otc")) return _find(FileType::Ttf);
     return nullptr;
 }
 #endif

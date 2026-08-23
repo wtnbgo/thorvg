@@ -40,6 +40,8 @@ char* append(char* lhs, const char* rhs, size_t n);            //append the rhs 
 char* dirname(const char* path);                               //return the full directory name
 char* filename(const char* path);                              //return the file name without extension
 const char* fileext(const char* path);                         //return the file extension name
+const char* fontVariations(const char* path);                  //return the "#tag=val,..." variation suffix start ('#') within a font path/key, or nullptr
+char* fontname(const char* path);                              //filename() of the pre-suffix part with the variation suffix re-appended ("fonts/x.ttf#wght=700" -> "x#wght=700")
 
 }
 #endif  //_TVG_STR_H_

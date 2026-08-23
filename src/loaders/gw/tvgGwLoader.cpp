@@ -126,9 +126,12 @@ bool GwLoader::open(const char* path)
     //Under the gw loader a "path" is a HOST KEY: the bridge resolves it
     //through the host's storage / font registry (shared bytes, no file IO
     //inside ThorVG). Fails cleanly when the key is not a font.
+    //A "key#tag=val,..." variable-font instance key is passed through to the
+    //bridge as-is (the host resolves the axes); only the loader NAME must be
+    //derived suffix-aware so each instance registers as a distinct font.
     if (!gwFace.open(path)) return false;
 
-    name = tvg::filename(path);
+    name = tvg::fontname(path);
     captureFaceNames(*this, gwFace);
     GwFontManager::instance().enroll(&gwFace);
     return true;

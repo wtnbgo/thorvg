@@ -48,6 +48,13 @@ struct FtFace
     //owned by FtFace; otherwise the caller must keep `data` alive until release.
     bool open(const char* data, uint32_t size, bool copy);
 
+    //Applies fvar design coordinates parsed from a "tag=val[,tag=val...]"
+    //spec (the part after '#' in a font path/name, without the '#'). Tags the
+    //face does not have are ignored, values are clamped by FreeType, and the
+    //companion hb_font_t is re-synced. Returns false when the face has no
+    //variation axes or nothing in the spec parsed.
+    bool setVariations(const char* spec);
+
     //Closes the FT_Face and releases owned data.
     void release();
 

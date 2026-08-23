@@ -273,6 +273,36 @@ const char* fileext(const char* path)
 }
 
 
+const char* fontVariations(const char* path)
+{
+    //A variable-font instance is addressed as "<path-or-key>#tag=val[,tag=val...]".
+    //The suffix must be split off before file IO / name derivation, and the
+    //font loaders apply it as fvar design coordinates.
+    return strchr(path, '#');
+}
+
+
+char* fontname(const char* path)
+{
+    auto suffix = fontVariations(path);
+    if (!suffix) return filename(path);
+
+    //filename() of the base part only (a '.' inside the suffix, e.g.
+    //"wdth=87.5", must not be taken for the file extension), then re-append
+    //the suffix verbatim so every variation gets a unique, stable font name.
+    auto base = duplicate(path, (size_t)(suffix - path));
+    auto stem = filename(base);
+    tvg::free(base);
+    auto stemLen = strlen(stem);
+    auto sufLen = strlen(suffix);
+    auto out = tvg::malloc<char>(stemLen + sufLen + 1);
+    memcpy(out, stem, stemLen);
+    memcpy(out + stemLen, suffix, sufLen + 1);
+    tvg::free(stem);
+    return out;
+}
+
+
 char* concat(const char* a, const char* b)
 {
     auto len = strlen(a) + strlen(b) + 1;

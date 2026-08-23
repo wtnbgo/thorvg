@@ -123,8 +123,16 @@ static void captureFaceNames(FontLoader& loader, FT_Face face)
 bool FtLoader::open(const char* path)
 {
 #ifdef THORVG_FILE_IO_SUPPORT
+    //"path#tag=val,..." addresses a variable-font instance: the suffix is
+    //split off before file IO and applied as fvar design coordinates, and
+    //the loader name keeps the suffix so each instance is a distinct font.
+    auto variations = tvg::fontVariations(path);
+    auto base = variations ? tvg::duplicate(path, (size_t)(variations - path))
+                           : nullptr;
+
     uint32_t size = 0;
-    auto buf = LoadModule::open(path, size);
+    auto buf = LoadModule::open(base ? base : path, size);
+    tvg::free(base);
     if (!buf) return false;
 
     if (!ftFace.open(buf, size, false)) {
@@ -135,7 +143,8 @@ bool FtLoader::open(const char* path)
     //transfer ownership of the file buffer to ftFace by toggling its
     //ownsData flag, since LoadModule::open()'s allocation must be freed by us.
     ftFace.ownsData = true;
-    name = tvg::filename(path);
+    if (variations) ftFace.setVariations(variations + 1);
+    name = tvg::fontname(path);
     captureFaceNames(*this, ftFace.face);
     FtFontManager::instance().enroll(&ftFace);
     return true;

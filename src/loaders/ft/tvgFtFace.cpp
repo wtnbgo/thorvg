@@ -23,6 +23,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_OUTLINE_H
+#include FT_MULTIPLE_MASTERS_H
 #include <hb-ft.h>
 
 #include "tvgFtFace.h"
@@ -193,6 +194,60 @@ bool FtFace::open(const char* data, uint32_t size, bool copy)
         hb_font_set_scale(hbFont, upem, upem);
     }
 
+    return true;
+}
+
+
+bool FtFace::setVariations(const char* spec)
+{
+    if (!face || !spec || !*spec) return false;
+
+    FT_MM_Var* mm = nullptr;
+    if (FT_Get_MM_Var(face, &mm) != 0 || !mm) return false;
+
+    //start from the design defaults, override the axes named in the spec
+    FT_Fixed coords[16];
+    auto axisCount = mm->num_axis;
+    if (axisCount > 16) axisCount = 16;
+    for (FT_UInt i = 0; i < axisCount; ++i) coords[i] = mm->axis[i].def;
+
+    auto applied = false;
+    auto p = spec;
+    while (*p) {
+        //tag (1..4 chars, up to '=' — shorter tags are space-padded like fvar)
+        while (*p == ' ' || *p == '\t' || *p == ',') ++p;
+        if (!*p) break;
+        char tag[4] = {' ', ' ', ' ', ' '};
+        int tlen = 0;
+        while (*p && *p != '=' && *p != ',') {
+            if (*p != ' ' && *p != '\t' && tlen < 4) tag[tlen++] = *p;
+            ++p;
+        }
+        if (*p != '=') {           //malformed token: skip to the next comma
+            while (*p && *p != ',') ++p;
+            continue;
+        }
+        ++p;
+        char* end = nullptr;
+        auto value = strtof(p, &end);
+        if (end == p) { while (*p && *p != ',') ++p; continue; }
+        p = end;
+        auto packed = (FT_ULong)((uint8_t)tag[0] << 24 | (uint8_t)tag[1] << 16 |
+                                 (uint8_t)tag[2] << 8 | (uint8_t)tag[3]);
+        for (FT_UInt i = 0; i < axisCount; ++i) {
+            if (mm->axis[i].tag != packed) continue;
+            coords[i] = (FT_Fixed)(value * 65536.0f);
+            applied = true;
+            break;
+        }
+    }
+
+    if (applied && FT_Set_Var_Design_Coordinates(face, axisCount, coords) != 0) applied = false;
+    FT_Done_MM_Var(acquireFtLibrary(), mm);
+    if (!applied) return false;
+
+    //FT_Set_Var_Design_Coordinates invalidates hb's cached font tables
+    if (hbFont) hb_ft_font_changed(hbFont);
     return true;
 }
 
