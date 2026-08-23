@@ -88,6 +88,12 @@ typedef struct TvgGwBridge
                          const char* locale,
                          void (*emit)(void* emitCtx, const TvgGwShapedGlyph* g),
                          void* emitCtx);
+
+    /* Whether the face has variable axes (fvar): 1 = variable, 0 = static.
+       May be NULL on hosts built before this member existed (treat as 0).
+       Members are append-only — the struct is copied by value, so the host
+       and thorvg must be rebuilt together when it grows. */
+    int (*isVariable)(void* ctx, void* face);
 } TvgGwBridge;
 
 /* Register the host bridge (the pointed-to struct is copied). Passing NULL
