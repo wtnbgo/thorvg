@@ -182,10 +182,10 @@ tvg::FontLoader* FtLoader::instantiate(const char* variations)
         delete(loader);
         return nullptr;
     }
-    if (variations && !loader->ftFace.setVariations(variations)) {
-        delete(loader);
-        return nullptr;
-    }
+    //Tolerate variations that name no axis of this face (e.g. a "wght=400"
+    //default normalization asked of a font without a wght axis): the derived
+    //instance simply keeps the face defaults.
+    if (variations) loader->ftFace.setVariations(variations);
     return loader;
 }
 
