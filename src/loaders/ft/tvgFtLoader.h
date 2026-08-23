@@ -44,6 +44,8 @@ struct FtLoader : public tvg::FontLoader
     void metrics(const tvg::FontMetrics& fm, tvg::TextMetrics& out) override;
     bool metrics(const tvg::FontMetrics& fm, const char* ch, tvg::GlyphMetrics& out) override;
     void copy(const tvg::FontMetrics& in, tvg::FontMetrics& out) override;
+    bool setVariations(const char* spec) override;
+    tvg::FontLoader* instantiate(const char* variations) override;
 };
 
 #endif //_TVG_FT_LOADER_H_

@@ -246,8 +246,14 @@ bool FtFace::setVariations(const char* spec)
     FT_Done_MM_Var(acquireFtLibrary(), mm);
     if (!applied) return false;
 
-    //FT_Set_Var_Design_Coordinates invalidates hb's cached font tables
-    if (hbFont) hb_ft_font_changed(hbFont);
+    //FT_Set_Var_Design_Coordinates invalidates hb's cached font tables.
+    //hb_ft_font_changed() also resets the hb scale from the FT face's pixel
+    //size (unset here) — re-lock it to font units or every advance collapses.
+    if (hbFont) {
+        hb_ft_font_changed(hbFont);
+        auto upem = face->units_per_EM ? face->units_per_EM : 1000;
+        hb_font_set_scale(hbFont, upem, upem);
+    }
     return true;
 }
 

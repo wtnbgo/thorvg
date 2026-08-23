@@ -163,6 +163,33 @@ bool FtLoader::open(const char* data, uint32_t size, const char* /*rpath*/, bool
 }
 
 
+bool FtLoader::setVariations(const char* spec)
+{
+    return ftFace.setVariations(spec);
+}
+
+
+//Clone this loader's font bytes into a NEW loader with `variations`
+//("tag=val,...") applied — used by LoaderMgr::font() to materialize a
+//"name#tag=val,..." instance from an already-registered base font, which
+//keeps variable-font instances working without file IO.
+tvg::FontLoader* FtLoader::instantiate(const char* variations)
+{
+    if (!ftFace.data || ftFace.size == 0) return nullptr;
+    auto loader = new FtLoader;
+    //copy=true: the derived instance must not depend on this loader's lifetime.
+    if (!loader->open(ftFace.data, ftFace.size, "", true)) {
+        delete(loader);
+        return nullptr;
+    }
+    if (variations && !loader->ftFace.setVariations(variations)) {
+        delete(loader);
+        return nullptr;
+    }
+    return loader;
+}
+
+
 bool FtLoader::close()
 {
     if (sharing > 0) {

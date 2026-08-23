@@ -175,6 +175,14 @@ struct FontLoader : LoadModule
     virtual void metrics(const FontMetrics& fm, TextMetrics& out) = 0;
     virtual bool metrics(const FontMetrics& fm, const char* ch, GlyphMetrics& out) = 0;
     virtual void copy(const FontMetrics& in, FontMetrics& out) = 0;
+
+    //Variable-font support (loaders without it keep the defaults).
+    //setVariations() applies "tag=val,..." design coordinates to this loader's face.
+    virtual bool setVariations(const char* /*spec*/) { return false; }
+    //instantiate() clones this loader's font as a NEW loader with the given
+    //design coordinates applied — the seam behind "name#tag=val,..." font
+    //names deriving an instance from an already-registered base font.
+    virtual FontLoader* instantiate(const char* /*variations*/) { return nullptr; }
 };
 
 }

@@ -442,6 +442,9 @@ tvg::LoadModule* LoaderMgr::loader(const char* name, const char* data, uint32_t 
 #endif
     if (loader->open(data, size, "", copy)) {
         loader->name = duplicate(name);
+        //A "#tag=val,..." suffix on the name addresses a variable-font
+        //instance: apply it as design coordinates right away.
+        if (auto variations = tvg::fontVariations(name)) loader->setVariations(variations + 1);
         loader->cached = true;  //force it.
         ScopedLock lock(_key);
         _activeLoaders.back(loader);
@@ -485,6 +488,31 @@ tvg::LoadModule* LoaderMgr::font(const char* name)
         if (loader->cached && matchFontName(name, static_cast<FontLoader*>(loader))) {
             ++loader->sharing;
             return loader;
+        }
+    }
+    //"base#tag=val,...": derive a variable-font instance from the registered
+    //base font on first use, and register it under the full name so later
+    //lookups hit the exact-match loop above. This keeps instance names usable
+    //even when the base font was registered from memory (no file IO available).
+    if (auto variations = tvg::fontVariations(name)) {
+        auto base = tvg::duplicate(name, (size_t)(variations - name));
+        FontLoader* found = nullptr;
+        INLIST_FOREACH(_activeLoaders, loader) {
+            if (loader->type != FileType::Ttf || !loader->cached) continue;
+            if (matchFontName(base, static_cast<FontLoader*>(loader))) {
+                found = static_cast<FontLoader*>(loader);
+                break;
+            }
+        }
+        tvg::free(base);
+        if (found) {
+            if (auto inst = found->instantiate(variations + 1)) {
+                inst->name = tvg::duplicate(name);
+                inst->cached = true;
+                _activeLoaders.back(inst);
+                ++inst->sharing;
+                return inst;
+            }
         }
     }
     return nullptr;
