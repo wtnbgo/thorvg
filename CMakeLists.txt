@@ -22,6 +22,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Build options
 option(TVG_BUILD_SHARED "Build shared library" ON)
+# Keep the toolchain's stack protector instead of passing -fno-stack-protector.
+# Console platforms (e.g. PS5 TRC R5163 "Strong Stack Smash Protection") require
+# every object in the title to be built with the stack protector enabled.
+option(TVG_STACK_PROTECTOR "Keep the compiler's stack protector (do not pass -fno-stack-protector)" OFF)
 option(TVG_THREADS "Enable multi-threading task scheduler" ON)
 option(TVG_PARTIAL "Enable Partial Rendering" ON)
 option(TVG_SIMD "Enable CPU Vectorization (SIMD)" OFF)
@@ -202,12 +206,14 @@ else()
     list(APPEND THORVG_PRIVATE_COMPILE_FLAGS 
         -fno-exceptions 
         -fno-rtti 
-        -fno-stack-protector 
         -fno-math-errno
         -fno-unwind-tables 
         -fno-asynchronous-unwind-tables 
         -Woverloaded-virtual
     )
+    if(NOT TVG_STACK_PROTECTOR)
+        list(APPEND THORVG_PRIVATE_COMPILE_FLAGS -fno-stack-protector)
+    endif()
 endif()
 
 # SIMD support
