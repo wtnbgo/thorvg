@@ -43,6 +43,29 @@ struct GwMetricsExt
 };
 
 
+//Characters that render as nothing (controls, joiners, variation selectors, ...).
+//A character no face covers is drawn as U+FFFD (or '?') unless it is one of these.
+//Same rule as glyphware::isDefaultIgnorable.
+bool isDefaultIgnorable(uint32_t cp)
+{
+    if (cp < 0x20 || (cp >= 0x7F && cp <= 0x9F)) return true;
+    if (cp == 0x00AD || cp == 0x034F || cp == 0x061C) return true;
+    if (cp >= 0x115F && cp <= 0x1160) return true;
+    if (cp >= 0x17B4 && cp <= 0x17B5) return true;
+    if (cp >= 0x180B && cp <= 0x180F) return true;
+    if (cp >= 0x200B && cp <= 0x200F) return true;
+    if (cp >= 0x2028 && cp <= 0x202E) return true;
+    if (cp >= 0x2060 && cp <= 0x206F) return true;
+    if (cp == 0x3164 || cp == 0xFEFF || cp == 0xFFA0) return true;
+    if (cp >= 0xFE00 && cp <= 0xFE0F) return true;
+    if (cp >= 0xFFF0 && cp <= 0xFFF8) return true;
+    if (cp >= 0x1BCA0 && cp <= 0x1BCA3) return true;
+    if (cp >= 0x1D173 && cp <= 0x1D17A) return true;
+    if (cp >= 0xE0000 && cp <= 0xE0FFF) return true;
+    return false;
+}
+
+
 //Decode one UTF-8 codepoint and advance `utf8`. Mirrors the TtfLoader helper
 //so we keep parity in error handling.
 size_t decodeUtf8(const char** utf8, const char* end)
@@ -210,11 +233,30 @@ bool GwLoader::get(FontMetrics& fm, char* text, uint32_t len, RenderPath& out)
     auto& mgr = GwFontManager::instance();
 
     //Pick the face that owns `cp`: primary first, then first fallback that
-    //has it, else primary again (which will produce .notdef tofu).
+    //has it. nullptr = no face has it (drawn as a replacement glyph below);
+    //invisible characters stay on the primary (they produce no outline).
     auto resolve = [&](uint32_t cp) -> GwFace* {
         if (gwFace.glyphIndex(cp) != 0) return &gwFace;
         if (auto* fb = mgr.fallback(cp, &gwFace)) return fb;
-        return &gwFace;
+        if (isDefaultIgnorable(cp)) return &gwFace;
+        return nullptr;
+    };
+
+    //Replacement for characters no face has: U+FFFD, else '?', from the first
+    //face (primary, then fallbacks) that has it. gid 0 = nothing to draw.
+    GwFace* replFace = nullptr;
+    uint32_t replGid = 0;
+    bool replResolved = false;
+    auto replacement = [&](GwFace*& face, uint32_t& gid) {
+        if (!replResolved) {
+            replResolved = true;
+            for (uint32_t cp : {0xFFFDu, static_cast<uint32_t>('?')}) {
+                GwFace* f = (gwFace.glyphIndex(cp) != 0) ? &gwFace : mgr.fallback(cp, &gwFace);
+                if (f) { replFace = f; replGid = f->glyphIndex(cp); break; }
+            }
+        }
+        face = replFace;
+        gid = replGid;
     };
 
     //Shape a same-face run within a source line, append results to glyphs[].
@@ -254,8 +296,33 @@ bool GwLoader::get(FontMetrics& fm, char* text, uint32_t len, RenderPath& out)
             const char* cpStart = p;
             auto cp = decodeUtf8(&p, lineEnd);
             auto* f = resolve(cp);
+            if (!f) {
+                //no face has it: close the current run, emit one replacement glyph
+                if (runFace) {
+                    shapeRun(runFace, runStart, lineStart,
+                             static_cast<uint32_t>(cpStart - runStart), glyphs);
+                }
+                GwFace* rf; uint32_t rgid;
+                replacement(rf, rgid);
+                if (rf && rgid) {
+                    auto runUpem = rf->unitsPerEm();
+                    if (runUpem) {
+                        auto unitScale = static_cast<float>(primaryUpem) / static_cast<float>(runUpem);
+                        Glyph g{};
+                        g.face = rf;
+                        g.gid = rgid;
+                        g.xAdv = static_cast<float>(rf->advance(rgid)) * unitScale * fm.spacing.x;
+                        g.cluster = static_cast<uint32_t>(cpStart - lineStart);
+                        glyphs.push(g);
+                    }
+                }
+                runFace = nullptr;
+                runStart = p;
+                continue;
+            }
             if (!runFace) {
                 runFace = f;
+                runStart = cpStart;
             } else if (f != runFace) {
                 shapeRun(runFace, runStart, lineStart,
                          static_cast<uint32_t>(cpStart - runStart), glyphs);
@@ -518,6 +585,13 @@ bool GwLoader::metrics(const FontMetrics& fm, const char* ch, GlyphMetrics& out)
         if (auto* fb = GwFontManager::instance().fallback(code, &gwFace)) {
             face = fb;
             gid = face->glyphIndex(code);
+        }
+    }
+    //no face has it: measure the replacement glyph drawn by get() (U+FFFD / '?')
+    if (gid == 0 && !isDefaultIgnorable(static_cast<uint32_t>(code))) {
+        for (uint32_t cp : {0xFFFDu, static_cast<uint32_t>('?')}) {
+            GwFace* f = (gwFace.glyphIndex(cp) != 0) ? &gwFace : GwFontManager::instance().fallback(cp, &gwFace);
+            if (f) { face = f; gid = f->glyphIndex(cp); break; }
         }
     }
     if (gid == 0) return false;
