@@ -27,22 +27,31 @@ using namespace tvg;
 
 namespace {
 
-Key gGwMgrKey;
+//Never destroyed on purpose (same for the manager below). GwLoaders still
+//cached by the loader manager are deleted by its static Inlist at process exit
+//and call retire() from there; static destruction order across translation
+//units is unspecified, so a destroyed mutex (libc++ throws "mutex lock failed"
+//and aborts) or a freed face array could be touched otherwise.
+Key& mgrKey()
+{
+    static Key* key = new Key;
+    return *key;
+}
 
 }
 
 
 GwFontManager& GwFontManager::instance()
 {
-    static GwFontManager mgr;
-    return mgr;
+    static GwFontManager* mgr = new GwFontManager;
+    return *mgr;
 }
 
 
 void GwFontManager::enroll(GwFace* face)
 {
     if (!face) return;
-    ScopedLock lock(gGwMgrKey);
+    ScopedLock lock(mgrKey());
     for (uint32_t i = 0; i < faces.count; ++i) {
         if (faces.data[i] == face) return;
     }
@@ -53,7 +62,7 @@ void GwFontManager::enroll(GwFace* face)
 void GwFontManager::retire(GwFace* face)
 {
     if (!face) return;
-    ScopedLock lock(gGwMgrKey);
+    ScopedLock lock(mgrKey());
     for (uint32_t i = 0; i < faces.count; ++i) {
         if (faces.data[i] == face) {
             //Order-preserving removal: shift remaining entries down so the
@@ -70,7 +79,7 @@ void GwFontManager::retire(GwFace* face)
 
 GwFace* GwFontManager::fallback(uint32_t codepoint, GwFace* primary) const
 {
-    ScopedLock lock(gGwMgrKey);
+    ScopedLock lock(mgrKey());
     for (uint32_t i = 0; i < faces.count; ++i) {
         auto* f = faces.data[i];
         if (f == primary) continue;
